@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://5qyfadrdkfvr"]
+
+[ext_resource type="Script" uid="uid://ses1fkydlrgf" path="res://scripts/gym_builder.gd" id="1_4lyoc"]
+[ext_resource type="PackedScene" uid="uid://b53yyv65aj01g" path="res://scenes/player.tscn" id="2_i052m"]
+
+[node name="TestScene" type="Node2D" unique_id=1100761655]
+script = ExtResource("1_4lyoc")
+player_scene = ExtResource("2_i052m")

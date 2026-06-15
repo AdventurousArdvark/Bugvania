@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cmgat05m0m0ex"]
+
+[ext_resource type="Script" uid="uid://bnj7oykd5rylv" path="res://scripts/level_one.gd" id="1_t18mc"]
+[ext_resource type="PackedScene" uid="uid://b53yyv65aj01g" path="res://scenes/player.tscn" id="2_843q2"]
+
+[node name="Node2D" type="Node2D" unique_id=262328425]
+script = ExtResource("1_t18mc")
+player_scene = ExtResource("2_843q2")
