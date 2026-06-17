@@ -20,6 +20,7 @@ var _origin_x: float = 0.0
 var _have_origin: bool = false
 var _frozen_t: float = 0.0
 var _hitbox: Area2D = null
+var _knock_t: float = 0.0
 
 func _ready() -> void:
 	health = max_health
@@ -76,7 +77,10 @@ func _physics_process(delta: float) -> void:
 
 	velocity.y = 0.0 if is_on_floor() else velocity.y + _gravity * delta
 
-	if patrol:
+	if _knock_t > 0.0:
+		_knock_t -= delta
+		velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+	elif patrol:
 		velocity.x = _dir * move_speed
 		if global_position.x > _origin_x + patrol_range:
 			_dir = -1
@@ -89,6 +93,10 @@ func _physics_process(delta: float) -> void:
 
 func take_damage(amount: int, props: Dictionary = {}) -> void:
 	health -= amount
+	var hd = props.get("hit_dir", Vector2.ZERO)
+	if hd != Vector2.ZERO:
+		velocity.x = hd.x * 160.0
+		_knock_t = 0.15
 	if props.get("element", "") == "ice":
 		_frozen_t = 2.0                 # Ice: freeze it...
 		modulate = Color("#bfe9ff")
@@ -97,6 +105,7 @@ func take_damage(amount: int, props: Dictionary = {}) -> void:
 			_hitbox.monitoring = false  # harmless while frozen
 	else:
 		_flash()
+		Audio.play("hit")
 	if health <= 0:
 		die()
 
@@ -108,7 +117,9 @@ func _flash() -> void:
 			modulate = Color.WHITE)
 
 func die() -> void:
-	# Later: drop a pickup / play an effect here.
+	Audio.play("enemy_die")
+	Fx.burst(get_parent(), global_position, color, 9, 180.0)
+	get_tree().call_group("camera_rig", "shake", 4.0, 0.15)
 	queue_free()
 
 func _on_contact(body: Node) -> void:

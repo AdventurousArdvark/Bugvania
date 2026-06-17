@@ -12,6 +12,8 @@ class_name AbilityPickup
 ## visual if you don't give it children.
 
 @export var ability: String = "has_double_jump"
+@export var grant_amount: int = 0          # optional: also add to a numeric property
+@export var amount_property: String = ""   # e.g. "missiles" (leave empty to skip)
 @export var size: Vector2 = Vector2(20, 20)
 @export var color: Color = Color("#ffd34d")
 @export var bob_height: float = 5.0
@@ -53,7 +55,11 @@ func _on_body_entered(body: Node) -> void:
 	if not (body is CharacterBody2D):
 		return
 	body.set(ability, true)        # flip the flat flag
+	if amount_property != "":      # optional: also top up a counter (e.g. missiles)
+		var cur = body.get(amount_property)
+		body.set(amount_property, (int(cur) if cur != null else 0) + grant_amount)
 	collected.emit(ability)
+	Audio.play("pickup")
 	# NOTE: across save/load you'd persist "this pickup is taken" in a save system;
 	# for now it just disappears for the session.
 	queue_free()

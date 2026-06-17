@@ -110,6 +110,7 @@ var _iframes := 0.0
 var _flash_t := 0.0
 var _hit_lock := 0.0
 var _dead := false
+var _was_on_floor := false
 var _shake = null
 var health: int = 0:
 	set(value):
@@ -119,6 +120,7 @@ var health: int = 0:
 
 func _ready() -> void:
 	collision_layer = 2          # Player layer, so your own beams pass through you
+	add_to_group("player")       # so hostile (boss) projectiles can find you
 	health = max_health
 	# Auto-attach the base-beam cannon so shooting works without editing the scene.
 	var has_weapon := false
@@ -127,10 +129,10 @@ func _ready() -> void:
 			has_weapon = true
 	if not has_weapon:
 		add_child(Weapon.new())
-	# Attach screen shake to the camera (for hit/death feel).
+	# Attach the camera rig (lookahead + shake) to the camera.
 	var cam := _find_camera()
 	if cam != null:
-		_shake = ScreenShake.new()
+		_shake = CameraRig.new()
 		cam.add_child(_shake)
 
 
@@ -237,6 +239,7 @@ func _try_jump() -> void:
 		velocity.y = jump_velocity
 		_jump_buffer = 0.0
 		_coyote = 0.0
+		Audio.play("jump")
 		return
 
 	# Wall jump - works on ANY wall, available whether or not you're gripping.
@@ -249,6 +252,7 @@ func _try_jump() -> void:
 		_jump_buffer = 0.0
 		_double_jump_used = false                 # touching a wall refreshes air options
 		_air_dash_used = false
+		Audio.play("wall_jump")
 		return
 
 	# Double jump - flag-gated.
@@ -256,6 +260,7 @@ func _try_jump() -> void:
 		velocity.y = jump_velocity
 		_double_jump_used = true
 		_jump_buffer = 0.0
+		Audio.play("double_jump")
 
 
 func _try_dash() -> void:
@@ -267,6 +272,7 @@ func _try_dash() -> void:
 			_dash_cd = dash_cooldown
 			if not is_on_floor():
 				_air_dash_used = true
+			Audio.play("dash")
 
 
 func _process_dash() -> void:
@@ -295,7 +301,11 @@ func _process_slide(delta: float) -> void:
 
 
 func _post_move() -> void:
-	if is_on_floor():
+	var on_floor := is_on_floor()
+	if on_floor and not _was_on_floor:
+		Audio.play("land")
+	_was_on_floor = on_floor
+	if on_floor:
 		_coyote = coyote_time
 		_air_dash_used = false
 		_double_jump_used = false
@@ -324,6 +334,7 @@ func take_damage(amount: int, from_pos = null) -> void:
 		return
 	if _shake != null:
 		_shake.shake(hit_shake, 0.25)
+	Audio.play("hurt")
 	await _do_hitstop(hitstop_time)
 
 
@@ -331,6 +342,7 @@ func _die() -> void:
 	_dead = true
 	velocity = Vector2.ZERO
 	modulate = death_color
+	Audio.play("die")
 	if _shake != null:
 		_shake.shake(death_shake, 0.5)
 	await _do_hitstop(0.12)

@@ -22,6 +22,9 @@ var _health: int = 0
 var _max_health: int = 1
 var _missiles: int = 0
 var _max_missiles: int = 0
+var _boss_hp: int = 0
+var _boss_max: int = 1
+var _boss_show: bool = false
 var _draw_node: Control = null
 
 # Inner Control whose _draw delegates back to the HUD.
@@ -63,6 +66,22 @@ func _on_missiles(current: int, maximum: int) -> void:
 	_max_missiles = maximum
 	_redraw()
 
+func bind_boss(boss: Node) -> void:
+	if boss == null:
+		return
+	_boss_max = int(boss.get("max_health"))
+	_boss_hp = int(boss.get("health"))
+	_boss_show = true
+	if boss.has_signal("health_changed"):
+		boss.health_changed.connect(_on_boss_health)
+	_redraw()
+
+func _on_boss_health(current: int, maximum: int) -> void:
+	_boss_hp = current
+	_boss_max = maximum
+	_boss_show = current > 0
+	_redraw()
+
 func _redraw() -> void:
 	if _draw_node != null:
 		_draw_node.queue_redraw()
@@ -83,6 +102,18 @@ func _render(c: Control) -> void:
 		for i in range(_max_missiles):
 			var ax := x0 + i * 14.0
 			c.draw_circle(Vector2(ax + 5.0, ay + 6.0), 5.0, POD_ON if i < _missiles else POD_OFF)
+
+	# Boss bar across the top while a boss is alive.
+	if _boss_show:
+		var vw := c.size.x
+		var bw := vw * 0.6
+		var bx := (vw - bw) * 0.5
+		var by := 18.0
+		var bh := 14.0
+		c.draw_rect(Rect2(bx - 2, by - 2, bw + 4, bh + 4), Color("#1a0f1f"))
+		c.draw_rect(Rect2(bx, by, bw, bh), Color("#2a1830"))
+		var frac := clampf(float(_boss_hp) / float(maxi(_boss_max, 1)), 0.0, 1.0)
+		c.draw_rect(Rect2(bx, by, bw * frac, bh), Color("#c8455f"))
 
 func _plate(c: Control, pos: Vector2, size: Vector2, full: bool) -> void:
 	var w := size.x

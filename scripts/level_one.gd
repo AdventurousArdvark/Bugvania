@@ -28,7 +28,7 @@ const C_CUE    := "#c8763a"   # wordless "look here / go this way" hint color
 
 @export var tile: float = 32.0
 @export var player_scene: PackedScene
-@export var show_labels: bool = true
+@export var show_labels: bool = false
 @export var next_scene: String = ""     # passed to the level exit
 
 var _rooms: Dictionary = {}              # name -> Rect2 (world px)
@@ -44,12 +44,14 @@ var T: float
 
 func _ready() -> void:
 	T = tile
+	add_child(Game.new())          # pause/restart/complete + procedural audio
 	_build_room_a()
 	_build_room_b()
 	_build_room_c()
 	_build_room_d()
 	_build_room_e()
 	_build_room_f()
+	_build_room_g()
 	_compute_world_bottom()
 	_spawn_enemies()
 	_spawn_player()
@@ -116,13 +118,13 @@ func _build_room_c() -> void:
 	_slab(52.7 * T, 53.0 * T, -1.0 * T, 5.0 * T, C_CUE)
 	_slab(57.0 * T, 57.3 * T, -1.0 * T, 5.0 * T, C_CUE)
 	# Missiles (flag + 5 ammo) as the reward for climbing out.
-	#var missiles_pick := AbilityPickup.new()
-	#missiles_pick.ability = "has_missiles"
-	#missiles_pick.amount_property = "missiles"
-	#missiles_pick.grant_amount = 5
-	#missiles_pick.color = Color("#ff8c42")
-	#missiles_pick.position = Vector2(61.0 * T, -2.0 * T)
-	#add_child(missiles_pick)
+	var missiles_pick := AbilityPickup.new()
+	missiles_pick.ability = "has_missiles"
+	missiles_pick.amount_property = "missiles"
+	missiles_pick.grant_amount = 5
+	missiles_pick.color = Color("#ff8c42")
+	missiles_pick.position = Vector2(61.0 * T, -2.0 * T)
+	add_child(missiles_pick)
 	_label(Vector2(59.5 * T, -3.5 * T), "MISSILES", 11)
 	_label(Vector2(53.5 * T, -2.0 * T), "WALL-JUMP UP")
 
@@ -174,30 +176,41 @@ func _build_room_f() -> void:
 	var x0 := 112.0 * T
 	var x1 := 130.0 * T
 	_register_room("F", Rect2(x0, -7.0 * T, x1 - x0, 17.0 * T), Vector2(x0 + T, -T))
-	_frame(x0, x1, -7.0 * T, 10.0 * T, true, false)   # solid right edge of the world
-	_slab(x0, 116.0 * T, 0.0, 2.0 * T, C_FLOOR)       # entry ledge
-	_slab(120.0 * T, 121.0 * T, -1.0 * T, 8.0 * T, C_WALL)  # the grip wall
-	_slab(116.0 * T, 120.0 * T, 5.0 * T, 6.0 * T, C_FLOOR)  # mid ledge to land on
-	_slab(116.0 * T, x1, 8.0 * T, 10.0 * T, C_FLOOR)        # bottom floor
-	# Cue down the grip wall.
-	_slab(119.7 * T, 120.0 * T, 0.0, 5.0 * T, C_CUE)
-	_label(Vector2(116.5 * T, -1.0 * T), "GRIP ↓ to control the drop")
-	var exit := LevelExit.new()
-	exit.next_scene = next_scene
-	exit.position = Vector2(118.0 * T, 6.5 * T)
-	add_child(exit)
-	_label(Vector2(116.5 * T, 1.0 * T), "EXIT")
-	# Optional bonus: a MISSILE DOOR gates the Wave Beam (a weapon as a key).
-	#var door := MissileDoor.new()
-	#door.position = Vector2(123.0 * T, 6.5 * T)   # sits on the bottom floor
-	#add_child(door)
-	_label(Vector2(120.5 * T, 1.5 * T), "MISSILE DOOR")
+	# Enter top-left at floor level; exit bottom-right (door at y = 8T) into the arena.
+	_frame(x0, x1, -7.0 * T, 10.0 * T, true, true, 0.0, 8.0 * T)
+	_slab(x0, 116.0 * T, 0.0, 2.0 * T, C_FLOOR)            # entry ledge (top)
+	_slab(120.0 * T, 121.0 * T, -1.0 * T, 5.0 * T, C_WALL) # grip wall (ends above the floor)
+	_slab(116.0 * T, 120.0 * T, 5.0 * T, 6.0 * T, C_FLOOR) # mid ledge
+	_slab(113.0 * T, x1, 8.0 * T, 10.0 * T, C_FLOOR)       # bottom floor -> arena door
+	_slab(119.7 * T, 120.0 * T, -1.0 * T, 5.0 * T, C_CUE)  # grip cue
+	# Optional bonus pocket (dead-end LEFT): a missile door gates the Wave Beam.
+	# It never blocks the path to the boss (that goes right).
+	var door := MissileDoor.new()
+	door.position = Vector2(115.0 * T, 6.5 * T)
+	add_child(door)
 	var wave := AbilityPickup.new()
 	wave.ability = "has_wave"
 	wave.color = Color("#c77dff")
-	wave.position = Vector2(127.0 * T, 6.0 * T)
+	wave.position = Vector2(113.6 * T, 7.0 * T)
 	add_child(wave)
-	_label(Vector2(125.5 * T, 4.0 * T), "WAVE BEAM", 11)
+	_label(Vector2(116.5 * T, -1.0 * T), "GRIP")
+
+
+func _build_room_g() -> void:
+	var x0 := 130.0 * T
+	var x1 := 158.0 * T
+	_register_room("G", Rect2(x0, -4.0 * T, x1 - x0, 14.0 * T), Vector2(x0 + T, 7.0 * T))
+	# Arena floor at y = 8T (meets F's bottom door). Solid right edge of the world.
+	_frame(x0, x1, -4.0 * T, 10.0 * T, true, false, 8.0 * T)
+	_slab(x0, x1, 8.0 * T, 10.0 * T, C_FLOOR)
+	# A couple of ledges for dodging over lunges.
+	_slab(136.0 * T, 140.0 * T, 4.0 * T, 5.0 * T, C_FLOOR)
+	_slab(148.0 * T, 152.0 * T, 4.0 * T, 5.0 * T, C_FLOOR)
+	# The boss.
+	var boss := Boss.new()
+	add_child(boss)
+	boss.global_position = Vector2(150.0 * T, 8.0 * T - boss.size.y * 0.5)
+	_label(Vector2(x0 + T, -3.0 * T), "BOSS")
 
 
 # ===========================================================================
@@ -222,7 +235,7 @@ func _register_room(room_name: String, rect: Rect2, entry: Vector2) -> void:
 
 
 func _on_room_body_entered(room_name: String, body: Node) -> void:
-	if body is CharacterBody2D:
+	if body.is_in_group("player"):
 		_enter_room(room_name)
 
 
@@ -271,6 +284,8 @@ func _spawn_player() -> void:
 		var hud := Hud.new()
 		add_child(hud)
 		hud.bind(_player)
+		for b in get_tree().get_nodes_in_group("boss"):
+			hud.bind_boss(b)
 
 
 func _find_camera(n: Node) -> Camera2D:
@@ -338,16 +353,20 @@ func _slab(x0: float, x1: float, top: float, bottom: float, color_hex := C_FLOOR
 	body.add_child(poly)
 
 
-# Ceiling + side walls. Doors are floor-level openings (top 3 tiles above floor).
-func _frame(x0: float, x1: float, top: float, bottom: float, left_door: bool, right_door: bool) -> void:
-	var door_top := -3.0 * T
+# Ceiling + side walls. Doorways are 3-tile openings whose floor is at door_y
+# (defaults to 0). This lets adjacent rooms connect at different heights.
+func _frame(x0: float, x1: float, top: float, bottom: float, left_door: bool, right_door: bool,
+		left_door_y := 0.0, right_door_y := 0.0) -> void:
+	var dh := 3.0 * T
 	_slab(x0, x1, top, top + T, C_WALL)                       # ceiling
 	if left_door:
-		_slab(x0, x0 + T, top, door_top, C_WALL)              # lintel above doorway
+		_slab(x0, x0 + T, top, left_door_y - dh, C_WALL)      # wall above the opening
+		_slab(x0, x0 + T, left_door_y, bottom, C_WALL)        # wall below the opening
 	else:
-		_slab(x0, x0 + T, top, bottom, C_WALL)                # solid wall
+		_slab(x0, x0 + T, top, bottom, C_WALL)
 	if right_door:
-		_slab(x1 - T, x1, top, door_top, C_WALL)
+		_slab(x1 - T, x1, top, right_door_y - dh, C_WALL)
+		_slab(x1 - T, x1, right_door_y, bottom, C_WALL)
 	else:
 		_slab(x1 - T, x1, top, bottom, C_WALL)
 
