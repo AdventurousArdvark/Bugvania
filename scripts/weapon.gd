@@ -26,6 +26,8 @@ var _player: Node = null
 var _cooldown: float = 0.0
 var _charging: bool = false
 var _charge_t: float = 0.0
+var _can_charge: bool = false
+var _anim: float = 0.0
 
 func _ready() -> void:
 	var p := get_parent()
@@ -35,8 +37,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _cooldown > 0.0:
 		_cooldown -= delta
+	_anim += delta
 
 	var can_charge: bool = _player != null and _player.get("has_charge") == true
+	_can_charge = can_charge
 
 	if _act_just_pressed("attack"):
 		_fire(false)
@@ -47,6 +51,8 @@ func _process(delta: float) -> void:
 		_charge_t += delta
 		if was < charge_time and _charge_t >= charge_time:
 			Audio.play("charge_ready")
+			if _player != null:
+				Fx.burst(_player.get_parent(), (_player as Node2D).global_position + Vector2(0, -8), Color("#ffffff"), 6, 90.0)
 	if _act_just_released("attack"):
 		if _charging and can_charge and _charge_t >= charge_time:
 			_fire(true)
@@ -54,6 +60,24 @@ func _process(delta: float) -> void:
 
 	if _act_just_pressed("shoot"):
 		_fire_missile()
+
+	queue_redraw()   # update the charge ring (or clear it)
+
+func _draw() -> void:
+	if not (_charging and _can_charge):
+		return
+	var p := clampf(_charge_t / charge_time, 0.0, 1.0)
+	var c := Vector2(0, -8)
+	var r := lerpf(5.0, 16.0, p)
+	var col := Color("#9fe6ff")
+	var a := 0.35 + 0.45 * p
+	if p >= 1.0:
+		col = Color("#ffffff")                      # fully charged: bright + pulsing
+		a = 0.7 + 0.3 * sin(_anim * 18.0)
+	draw_arc(c, r, 0.0, TAU, 28, Color(col.r, col.g, col.b, a), 2.0)
+	for i in 3:                                      # orbiting motes as it fills
+		var ang := _anim * 6.0 + i * TAU / 3.0
+		draw_circle(c + Vector2(cos(ang), sin(ang)) * r, 1.6, Color(col.r, col.g, col.b, a))
 
 func _fire(charged: bool) -> void:
 	if not charged and _cooldown > 0.0:

@@ -95,6 +95,7 @@ func _build_room_b() -> void:
 	_slab(36.0 * T, 38.0 * T, -3.0 * T, -2.0 * T, C_FLOOR)
 	var charge := AbilityPickup.new()
 	charge.ability = "has_charge"
+	charge.display_name = "Charge Gland"
 	charge.color = Color("#9fe6ff")
 	charge.position = Vector2(37.0 * T, -4.0 * T)
 	add_child(charge)
@@ -120,6 +121,7 @@ func _build_room_c() -> void:
 	# Missiles (flag + 5 ammo) as the reward for climbing out.
 	var missiles_pick := AbilityPickup.new()
 	missiles_pick.ability = "has_missiles"
+	missiles_pick.display_name = "Stinger Pods"
 	missiles_pick.amount_property = "missiles"
 	missiles_pick.grant_amount = 5
 	missiles_pick.color = Color("#ff8c42")
@@ -145,6 +147,7 @@ func _build_room_d() -> void:
 	# Ice Beam, on the far landing (freezes enemies into platforms).
 	var ice := AbilityPickup.new()
 	ice.ability = "has_ice"
+	ice.display_name = "Frost Gland"
 	ice.color = Color("#bfe9ff")
 	ice.position = Vector2(86.0 * T, -3.0 * T)
 	add_child(ice)
@@ -168,6 +171,7 @@ func _build_room_e() -> void:
 	# The reward.
 	var pickup := AbilityPickup.new()
 	pickup.ability = "has_double_jump"
+	pickup.display_name = "Wing-Segment"
 	pickup.position = Vector2(95.5 * T, -4.0 * T)
 	add_child(pickup)
 
@@ -190,6 +194,7 @@ func _build_room_f() -> void:
 	add_child(door)
 	var wave := AbilityPickup.new()
 	wave.ability = "has_wave"
+	wave.display_name = "Resonant Membrane"
 	wave.color = Color("#c77dff")
 	wave.position = Vector2(113.6 * T, 7.0 * T)
 	add_child(wave)
@@ -245,6 +250,8 @@ func _enter_room(room_name: String) -> void:
 	_current_room = room_name
 	_checkpoint = _entries[room_name]
 	_apply_camera_limits(_rooms[room_name])
+	if room_name == "G":
+		get_tree().call_group("boss", "engage")   # wake the boss + show its bar
 
 
 func _apply_camera_limits(rect: Rect2) -> void:

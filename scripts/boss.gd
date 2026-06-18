@@ -6,7 +6,7 @@ class_name Boss
 ## Takes beam/missile damage anytime; the recover window is the safe time to hit it.
 ## In group "enemy" (so your beams damage it) and "boss" (so the HUD shows its bar).
 
-enum St { INTRO, IDLE, WINDUP, LUNGE, RECOVER, VOLLEY, DEAD }
+enum St { DORMANT, INTRO, IDLE, WINDUP, LUNGE, RECOVER, VOLLEY, DEAD }
 
 @export var max_health: int = 40
 @export var lunge_speed: float = 420.0
@@ -18,9 +18,10 @@ enum St { INTRO, IDLE, WINDUP, LUNGE, RECOVER, VOLLEY, DEAD }
 @export var color: Color = Color("#7a3b8f")
 
 signal health_changed(current, maximum)
+signal engaged
 
 var health: int
-var _state: int = St.INTRO
+var _state: int = St.DORMANT
 var _t: float = 0.6
 var _dir: int = -1
 var _phase2: bool = false
@@ -73,6 +74,8 @@ func _physics_process(delta: float) -> void:
 	_t -= delta
 
 	match _state:
+		St.DORMANT:
+			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
 		St.INTRO:
 			velocity.x = 0.0
 			if _t <= 0.0:
@@ -121,6 +124,12 @@ func _physics_process(delta: float) -> void:
 func _to_idle() -> void:
 	_state = St.IDLE
 	_t = idle_time * (0.65 if _phase2 else 1.0)
+
+func engage() -> void:
+	if _state == St.DORMANT:
+		_state = St.INTRO
+		_t = 0.8
+		engaged.emit()
 
 func _face_player() -> void:
 	if _player != null:
