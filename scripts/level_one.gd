@@ -293,6 +293,9 @@ func _spawn_player() -> void:
 		hud.bind(_player)
 		for b in get_tree().get_nodes_in_group("boss"):
 			hud.bind_boss(b)
+		var menu := LoadoutMenu.new()
+		add_child(menu)
+		menu.bind(_player)
 
 
 func _find_camera(n: Node) -> Camera2D:

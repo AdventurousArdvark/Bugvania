@@ -56,6 +56,8 @@ func _add_button(text: String, cb: Callable) -> void:
 func _input(event: InputEvent) -> void:
 	if _complete:
 		return
+	if not get_tree().get_nodes_in_group("modal").is_empty():
+		return                          # the loadout menu is open; let it handle input
 	var toggle := false
 	if InputMap.has_action("pause") and event.is_action_pressed("pause"):
 		toggle = true

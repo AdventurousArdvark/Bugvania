@@ -73,6 +73,11 @@ extends CharacterBody2D
 @export var has_wave := false
 @export var has_missiles := false
 
+# Beam toggles (Super Metroid-style: suppress a part in the menu without losing it).
+var charge_active := true
+var ice_active := true
+var wave_active := true
+
 # --- Missiles ammo ---
 @export var max_missiles := 15
 var missiles: int = 0:

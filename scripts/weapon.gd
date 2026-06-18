@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 		_cooldown -= delta
 	_anim += delta
 
-	var can_charge: bool = _player != null and _player.get("has_charge") == true
+	var can_charge: bool = _player != null and _player.get("has_charge") == true and _player.get("charge_active") != false
 	_can_charge = can_charge
 
 	if _act_just_pressed("attack"):
@@ -145,10 +145,10 @@ func _make_stats(charged: bool) -> Dictionary:
 		s.size = 14.0
 		s.color = Color("#ffffff")
 		s.lifetime = 1.5
-	if _player != null and _player.get("has_ice") == true:
+	if _player != null and _player.get("has_ice") == true and _player.get("ice_active") != false:
 		s.element = "ice"                 # freezes enemies (enemy.gd reacts)
 		s.color = Color("#bfe9ff")
-	if _player != null and _player.get("has_wave") == true:
+	if _player != null and _player.get("has_wave") == true and _player.get("wave_active") != false:
 		s.pierce = true                   # Wave passes through walls and enemies
 		s.color = Color("#c77dff")
 	return s
