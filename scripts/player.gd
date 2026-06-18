@@ -278,6 +278,7 @@ func _try_dash() -> void:
 			if not is_on_floor():
 				_air_dash_used = true
 			Audio.play("dash")
+			Rumble.pulse(0.2, 0.2, 0.1)
 
 
 func _process_dash() -> void:
@@ -309,6 +310,7 @@ func _post_move() -> void:
 	var on_floor := is_on_floor()
 	if on_floor and not _was_on_floor:
 		Audio.play("land")
+		Rumble.pulse(0.0, 0.22, 0.07)
 	_was_on_floor = on_floor
 	if on_floor:
 		_coyote = coyote_time
@@ -340,6 +342,7 @@ func take_damage(amount: int, from_pos = null) -> void:
 	if _shake != null:
 		_shake.shake(hit_shake, 0.25)
 	Audio.play("hurt")
+	Rumble.pulse(0.5, 0.7, 0.25)
 	await _do_hitstop(hitstop_time)
 
 
@@ -348,6 +351,7 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	modulate = death_color
 	Audio.play("die")
+	Rumble.pulse(0.9, 1.0, 0.5)
 	if _shake != null:
 		_shake.shake(death_shake, 0.5)
 	await _do_hitstop(0.12)

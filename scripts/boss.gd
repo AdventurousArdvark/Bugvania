@@ -16,6 +16,7 @@ enum St { DORMANT, INTRO, IDLE, WINDUP, LUNGE, RECOVER, VOLLEY, DEAD }
 @export var contact_damage: int = 20
 @export var size: Vector2 = Vector2(64, 44)
 @export var color: Color = Color("#7a3b8f")
+@export var boss_name: String = "THE BROODMOTHER"
 
 signal health_changed(current, maximum)
 signal engaged
@@ -99,6 +100,7 @@ func _physics_process(delta: float) -> void:
 				modulate = Color.WHITE
 				_state = St.LUNGE
 				_t = 1.2
+				Rumble.pulse(0.2, 0.5, 0.15)
 		St.LUNGE:
 			velocity.x = _dir * lunge_speed
 			if is_on_wall() or _t <= 0.0:
@@ -128,8 +130,12 @@ func _to_idle() -> void:
 func engage() -> void:
 	if _state == St.DORMANT:
 		_state = St.INTRO
-		_t = 0.8
+		_t = 1.4                       # hold while the intro card plays
 		engaged.emit()
+		get_tree().call_group("game", "boss_intro", boss_name)
+		get_tree().call_group("camera_rig", "punch", 1.12, 0.7)
+		Audio.play("boss_roar")
+		Rumble.pulse(0.6, 0.8, 0.5)
 
 func _face_player() -> void:
 	if _player != null:
@@ -158,6 +164,8 @@ func take_damage(amount: int, _props: Dictionary = {}) -> void:
 	if not _phase2 and health <= int(max_health * 0.6):
 		_phase2 = true
 		get_tree().call_group("camera_rig", "shake", 10.0, 0.4)
+		Audio.play("boss_roar")
+		Rumble.pulse(0.5, 0.6, 0.4)
 	if health <= 0:
 		_die()
 
@@ -168,6 +176,7 @@ func _die() -> void:
 		_hitbox.monitoring = false
 	Audio.play("boss_die")
 	get_tree().call_group("camera_rig", "shake", 18.0, 0.8)
+	Rumble.pulse(1.0, 1.0, 0.6)
 	Fx.burst(get_parent(), global_position, color, 22, 240.0)
 	health_changed.emit(0, max_health)
 	_finish()

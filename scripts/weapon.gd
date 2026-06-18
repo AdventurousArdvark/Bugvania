@@ -84,6 +84,8 @@ func _fire(charged: bool) -> void:
 		return
 	_spawn(_aim_dir(), _make_stats(charged))
 	Audio.play("charged" if charged else "shoot")
+	if charged:
+		Rumble.pulse(0.3, 0.5, 0.2)
 	if not charged:
 		_cooldown = fire_cooldown
 
