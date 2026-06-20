@@ -13,6 +13,7 @@ var _age: float = 0.0
 var _pierce: bool = false
 var _hostile: bool = false   # true = boss/enemy shot (hits the player instead)
 var _hit: Dictionary = {}     # enemies already damaged (so a piercing shot hits each once)
+var _color: Color = Color("#9fe6ff")
 
 func _ready() -> void:
 	collision_layer = 0
@@ -28,8 +29,9 @@ func setup(pos: Vector2, dir: Vector2, stats: Dictionary) -> void:
 	_hostile = bool(stats.get("hostile", false))
 	collision_mask = 3 if _hostile else 5   # hostile: World+Player; friendly: World+Enemies
 	properties = {"element": stats.get("element", "")}
+	_color = stats.get("color", Color("#9fe6ff"))
 	rotation = dir.angle()
-	_build_visual(float(stats.get("size", 8.0)), stats.get("color", Color("#9fe6ff")))
+	_build_visual(float(stats.get("size", 8.0)), _color)
 	global_position = pos
 
 func _build_visual(s: float, color: Color) -> void:
@@ -60,6 +62,7 @@ func _on_body_entered(body: Node) -> void:
 			body.take_damage(damage, global_position)
 			queue_free()
 		elif body is StaticBody2D:
+			Fx.burst(get_parent(), global_position, _color, 3, 70.0)
 			queue_free()
 		return
 	# Reactive world: missile doors, switches, breakable blocks.
@@ -76,9 +79,12 @@ func _on_body_entered(body: Node) -> void:
 		var p := properties.duplicate()
 		p["hit_dir"] = _velocity.normalized()
 		body.take_damage(damage, p)
+		if damage >= 4:            # charged / missile = a chunky impact
+			get_tree().call_group("game", "hitstop", 0.05)
 		if not _pierce:
 			queue_free()
 		return
-	# Hit solid world: stop, unless this beam pierces walls (Wave).
+	# Hit solid world: spark and stop, unless this beam pierces walls (Wave).
 	if body is StaticBody2D and not _pierce:
+		Fx.burst(get_parent(), global_position, _color, 4, 90.0)
 		queue_free()

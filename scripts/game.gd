@@ -8,10 +8,12 @@ var _panel: Control = null
 var _title: Label = null
 var _buttons: VBoxContainer = null
 var _paused: bool = false
+var _revealing: bool = false
 var _complete: bool = false
 var _reveal_root: Control = null
 var _reveal_label: Label = null
 var _revealed: Dictionary = {}
+var _hs_token: int = 0
 
 func _ready() -> void:
 	add_to_group("game")
@@ -76,7 +78,7 @@ func _add_button(text: String, cb: Callable) -> void:
 	_buttons.add_child(b)
 
 func _input(event: InputEvent) -> void:
-	if _complete:
+	if _complete or _revealing:
 		return
 	if not get_tree().get_nodes_in_group("modal").is_empty():
 		return                          # the loadout menu is open; let it handle input
@@ -117,37 +119,71 @@ func _show_resume(show: bool) -> void:
 		_buttons.get_child(0).visible = show
 
 func show_complete() -> void:
+	show_end("DEMO COMPLETE")
+
+# Generic end card (success or failure). Pauses and offers Restart / Quit.
+func show_end(end_title: String) -> void:
 	if _complete:
 		return
 	_complete = true
-	_title.text = "DEMO COMPLETE"
+	_title.text = end_title
 	_show_resume(false)
 	_panel.visible = true
 	get_tree().paused = true
 
+# Brief dim on room transitions to soften the camera hand-off.
+func room_fade() -> void:
+	var fade := ColorRect.new()
+	fade.color = Color(0, 0, 0, 0)
+	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(fade)
+	var t := create_tween()
+	t.tween_property(fade, "color:a", 0.45, 0.10)
+	t.tween_property(fade, "color:a", 0.0, 0.28)
+	t.tween_callback(fade.queue_free)
+
+# Kick off the post-boss escape sequence.
+func start_escape() -> void:
+	if _complete:
+		return
+	if get_tree().get_first_node_in_group("escape") != null:
+		return
+	add_child(Escape.new())
+
 # First-time pickup flourish: dim + slow-mo + the part name + a sting.
 func reveal(key: String, part_name: String) -> void:
 	if _revealed.has(key):
-		get_tree().call_group("hud", "show_pickup", part_name)
 		return
 	_revealed[key] = true
+	_revealing = true
 	_reveal_label.text = "·  " + str(part_name).to_upper() + "  ·"
 	_reveal_root.visible = true
 	_reveal_root.modulate.a = 0.0
-	Engine.time_scale = 0.12
+	get_tree().paused = true                 # full freeze on grab
 	Audio.play("pickup")
 	Audio.play("charged")
 	Rumble.pulse(0.3, 0.5, 0.3)
+	# Timers run with process_always so they advance while the tree is paused.
 	for i in 8:
 		_reveal_root.modulate.a = float(i + 1) / 8.0
-		await get_tree().create_timer(0.02, true, false, true).timeout
-	await get_tree().create_timer(0.55, true, false, true).timeout
+		await get_tree().create_timer(0.02, true, false, false).timeout
+	await get_tree().create_timer(0.7, true, false, false).timeout
 	for i in 8:
 		_reveal_root.modulate.a = 1.0 - float(i + 1) / 8.0
-		await get_tree().create_timer(0.02, true, false, true).timeout
+		await get_tree().create_timer(0.02, true, false, false).timeout
 	_reveal_root.visible = false
-	Engine.time_scale = 1.0
-	get_tree().call_group("hud", "show_pickup", part_name)
+	get_tree().paused = false
+	_revealing = false
+
+# Scaled hitstop. Latest caller owns the restore so overlapping hits don't cut short.
+func hitstop(duration: float) -> void:
+	_hs_token += 1
+	var mine := _hs_token
+	Engine.time_scale = 0.04
+	await get_tree().create_timer(duration, true, false, true).timeout
+	if mine == _hs_token:
+		Engine.time_scale = 1.0
 
 # Boss arrival card: name fades in, holds, fades out.
 func boss_intro(boss_name: String) -> void:

@@ -48,7 +48,9 @@ extends CharacterBody2D
 @export var wall_grip_stick := 30.0           # gentle inward pull to hold contact
 @export var wall_jump_push := 420.0           # horizontal kick off the wall
 @export var wall_jump_velocity := -430.0
-@export var wall_jump_control_lock := 0.16    # steering ignored this long after a wall jump
+@export var wall_jump_control_lock := 0.10    # brief full-ignore pop right off the wall
+@export var wall_jump_steer_time := 0.30      # after the pop, return-steering stays damped this long
+@export var wall_jump_return_control := 0.32  # accel multiplier when steering BACK toward the wall
 
 # --- Dash / Drill ---
 @export var dash_speed := 480.0
@@ -106,6 +108,8 @@ var _jump_buffer := 0.0
 var _dash_timer := 0.0
 var _dash_cd := 0.0
 var _wall_jump_lock := 0.0
+var _wall_jump_steer := 0.0
+var _wall_jump_dir := 0.0     # +1 = launched rightward (off a left wall), -1 = left
 var _air_dash_used := false
 var _double_jump_used := false
 var _is_sliding := false
@@ -117,6 +121,11 @@ var _hit_lock := 0.0
 var _dead := false
 var _was_on_floor := false
 var _shake = null
+@export var bash_force: float = 540.0
+@export var bash_range: float = 80.0
+@export var bash_air_refresh: bool = true
+var _bash_sensor: Area2D = null
+var _f_down: bool = false
 var health: int = 0:
 	set(value):
 		health = value
@@ -139,6 +148,23 @@ func _ready() -> void:
 	if cam != null:
 		_shake = CameraRig.new()
 		cam.add_child(_shake)
+	# Bash sensor: a generous circle that notices nearby "bashable" targets.
+	_bash_sensor = Area2D.new()
+	_bash_sensor.collision_layer = 0
+	_bash_sensor.collision_mask = 4          # enemies + bash points live on layer 4
+	var bs := CollisionShape2D.new()
+	var bc := CircleShape2D.new()
+	bc.radius = bash_range
+	bs.shape = bc
+	_bash_sensor.add_child(bs)
+	add_child(_bash_sensor)
+	# Hide any grey-box placeholder sprite from the scene and attach the procedural
+	# creature visual. (Swap this for an AnimatedSprite2D when real art exists.)
+	for c in get_children():
+		if c is Sprite2D or c is AnimatedSprite2D:
+			(c as CanvasItem).visible = false
+	var pv := PlayerVisual.new()
+	add_child(pv)
 
 
 func _physics_process(delta: float) -> void:
@@ -175,6 +201,8 @@ func _update_timers(delta: float) -> void:
 		_dash_cd -= delta
 	if _wall_jump_lock > 0.0:
 		_wall_jump_lock -= delta
+	if _wall_jump_steer > 0.0:
+		_wall_jump_steer -= delta
 	if not is_on_floor() and _coyote > 0.0:
 		_coyote -= delta
 	if _dash_timer > 0.0:
@@ -194,6 +222,7 @@ func _process_normal(delta: float, input_x: float) -> void:
 	_try_jump()
 	_try_dash()
 	_try_slide()
+	_try_bash()
 
 
 func _apply_gravity(delta: float) -> void:
@@ -204,17 +233,25 @@ func _apply_gravity(delta: float) -> void:
 
 
 func _handle_horizontal(delta: float, input_x: float) -> void:
-	# After a wall jump, briefly ignore steering so the kick carries you across
-	# the gap instead of being cancelled by held input. THIS is the climb fix.
+	# The brief pop right off the wall ignores steering entirely so the kick reads.
 	if _wall_jump_lock > 0.0 or _hit_lock > 0.0:
 		return
 
 	var on_floor := is_on_floor()
 	var accel := run_accel if on_floor else air_accel
 	var fric := ground_friction if on_floor else air_friction
+	var allow_boost := true
+
+	# Super Metroid feel: for a short window after a wall jump, steering BACK toward
+	# the wall doesn't snap you — it gently arcs you in (so you can drift back and
+	# kick again to climb a shaft). Steering away or up stays fully responsive.
+	if _wall_jump_steer > 0.0 and input_x != 0.0 and signf(input_x) != signf(_wall_jump_dir):
+		accel *= wall_jump_return_control
+		allow_boost = false
+
 	if input_x != 0.0:
 		# Reversing direction -> stronger accel so quick changes feel instant.
-		if signf(input_x) != signf(velocity.x) and velocity.x != 0.0:
+		if allow_boost and signf(input_x) != signf(velocity.x) and velocity.x != 0.0:
 			accel *= turn_boost
 		velocity.x = move_toward(velocity.x, input_x * max_run_speed, accel * delta)
 	else:
@@ -253,7 +290,9 @@ func _try_jump() -> void:
 		velocity.x = n.x * wall_jump_push
 		velocity.y = wall_jump_velocity
 		_facing = 1 if n.x > 0.0 else -1          # face away from the wall
-		_wall_jump_lock = wall_jump_control_lock  # let the kick carry (climb fix)
+		_wall_jump_lock = wall_jump_control_lock  # brief pure-kick pop
+		_wall_jump_steer = wall_jump_steer_time   # then damped return-steering
+		_wall_jump_dir = n.x                       # the direction we launched
 		_jump_buffer = 0.0
 		_double_jump_used = false                 # touching a wall refreshes air options
 		_air_dash_used = false
@@ -284,6 +323,64 @@ func _try_dash() -> void:
 func _process_dash() -> void:
 	velocity.x = _facing * dash_speed
 	velocity.y = 0.0
+
+
+# --- Bash (Ori-style): latch the nearest target and fling, redirecting momentum.
+# Refreshes air options, so you can chain bashes across a gap. Map a "bash" action,
+# or use the F key as a fallback.
+func _bash_pressed() -> bool:
+	if InputMap.has_action("bash") and Input.is_action_just_pressed("bash"):
+		return true
+	var down := Input.is_physical_key_pressed(KEY_F)
+	var edge := down and not _f_down
+	_f_down = down
+	return edge
+
+func _try_bash() -> void:
+	if _bash_sensor == null:
+		return
+	if not _bash_pressed():
+		return
+	var target = _nearest_bashable()
+	if target == null:
+		return
+	var dir := _bash_dir(target)
+	velocity = dir * bash_force
+	_hit_lock = 0.16                              # let the fling carry past steering
+	if bash_air_refresh:
+		_air_dash_used = false
+		_double_jump_used = false
+	if target.is_in_group("enemy") and target.has_method("take_damage"):
+		target.take_damage(1, {"hit_dir": -dir})  # shove the target the other way
+	Audio.play("dash")
+	Rumble.pulse(0.3, 0.45, 0.12)
+	get_tree().call_group("game", "hitstop", 0.05)
+	Fx.burst(get_parent(), global_position, Color("#bff0c0"), 8, 150.0)
+
+func _nearest_bashable():
+	var best = null
+	var best_d := INF
+	var candidates: Array = []
+	candidates.append_array(_bash_sensor.get_overlapping_bodies())
+	candidates.append_array(_bash_sensor.get_overlapping_areas())
+	for n in candidates:
+		if n == self or not n.is_in_group("bashable"):
+			continue
+		var d := global_position.distance_squared_to((n as Node2D).global_position)
+		if d < best_d:
+			best_d = d
+			best = n
+	return best
+
+func _bash_dir(target) -> Vector2:
+	var ix := Input.get_axis("move_left", "move_right")
+	var iy := Input.get_axis("move_up", "move_down")
+	var v := Vector2(ix, iy)
+	if v.length() > 0.2:
+		return v.normalized()
+	# No steer held: fling away from the target (classic bounce-off).
+	var away := global_position - (target as Node2D).global_position
+	return away.normalized() if away.length() > 1.0 else Vector2.UP
 
 
 func _try_slide() -> void:

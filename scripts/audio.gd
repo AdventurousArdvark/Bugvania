@@ -30,6 +30,7 @@ const SPECS := {
 	"boss_hit":    [160.0, 150.0, 0.05, "square",  0.40],
 	"boss_die":    [300.0, 40.0,  0.70, "noise",   0.60],
 	"boss_roar":   [90.0,  300.0, 0.60, "saw",     0.55],
+	"alarm":       [880.0, 660.0, 0.12, "square",  0.40],
 }
 
 var _streams: Dictionary = {}

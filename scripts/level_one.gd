@@ -36,6 +36,7 @@ var _entries: Dictionary = {}            # name -> Vector2 (checkpoint/spawn)
 var _player: Node = null
 var _cam: Camera2D = null
 var _current_room: String = ""
+var _visited: Dictionary = {}            # room names the player has entered
 var _checkpoint: Vector2 = Vector2.ZERO
 var _world_bottom: float = 0.0
 var _r_down: bool = false
@@ -44,7 +45,9 @@ var T: float
 
 func _ready() -> void:
 	T = tile
+	add_to_group("level")
 	add_child(Game.new())          # pause/restart/complete + procedural audio
+	add_child(Ambiance.new())      # tint + spores + drips
 	_build_room_a()
 	_build_room_b()
 	_build_room_c()
@@ -247,11 +250,46 @@ func _on_room_body_entered(room_name: String, body: Node) -> void:
 func _enter_room(room_name: String) -> void:
 	if room_name == _current_room:
 		return
+	var first := _current_room == ""
 	_current_room = room_name
+	_visited[room_name] = true
 	_checkpoint = _entries[room_name]
 	_apply_camera_limits(_rooms[room_name])
+	get_tree().call_group("ambiance", "set_tint", _room_tint(room_name))
+	if not first:
+		get_tree().call_group("game", "room_fade")
+	get_tree().call_group("escape", "room_entered", room_name)
 	if room_name == "G":
 		get_tree().call_group("boss", "engage")   # wake the boss + show its bar
+	else:
+		get_tree().call_group("boss", "disengage") # left the arena: boss stands down
+
+
+# Faint per-area color so rooms feel like distinct places.
+func _room_tint(room_name: String) -> Color:
+	match room_name:
+		"A": return Color(0.25, 0.45, 0.50, 0.10)   # cool entrance
+		"B": return Color(0.30, 0.45, 0.25, 0.10)   # mossy
+		"C": return Color(0.20, 0.25, 0.45, 0.13)   # deep pit
+		"D": return Color(0.45, 0.60, 0.70, 0.12)   # icy
+		"E": return Color(0.40, 0.28, 0.50, 0.11)   # spore-purple
+		"F": return Color(0.30, 0.22, 0.28, 0.13)   # gloom
+		"G": return Color(0.50, 0.12, 0.12, 0.14)   # the brood
+		_:   return Color(0.30, 0.30, 0.30, 0.10)
+
+
+# --- map data for the loadout menu's minimap ---
+func map_rooms() -> Dictionary:
+	return _rooms
+
+func map_visited() -> Dictionary:
+	return _visited
+
+func map_current() -> String:
+	return _current_room
+
+func map_player_pos() -> Vector2:
+	return (_player as Node2D).global_position if _player != null else Vector2.ZERO
 
 
 func _apply_camera_limits(rect: Rect2) -> void:
@@ -296,6 +334,7 @@ func _spawn_player() -> void:
 		var menu := LoadoutMenu.new()
 		add_child(menu)
 		menu.bind(_player)
+		menu.set_map_source(self)
 
 
 func _find_camera(n: Node) -> Camera2D:
@@ -322,15 +361,52 @@ func _compute_world_bottom() -> void:
 func _spawn_enemies() -> void:
 	# Placed where combat fits the teaching flow: after movement is introduced,
 	# and one past the gate in E. (Room A stays a safe, can't-fail intro.)
-	_add_enemy(Vector2(36.0 * T, -2.0 * T))    # B: first target, test the charge beam
-	_add_enemy(Vector2(85.0 * T, -2.0 * T))    # D: on the far landing ledge
-	_add_enemy(Vector2(108.0 * T, -2.0 * T))   # E: beyond the double-jump gate
+	_add_enemy(Vector2(36.0 * T, -2.0 * T))            # B: first target, test the charge beam
+	_add_enemy(Vector2(85.0 * T, -2.0 * T))            # D: on the far landing ledge
+	_add_enemy(Vector2(108.0 * T, -2.0 * T))           # E: beyond the double-jump gate
+	# Variety with readable tells, introduced one mechanic at a time:
+	_add_typed(Spitter.new(), Vector2(40.0 * T, -2.0 * T))   # B: learn to dodge shots
+	_add_typed(Flyer.new(),   Vector2(90.0 * T, -6.0 * T))   # D: airborne swooper
+	_add_typed(Charger.new(), Vector2(112.0 * T, -2.0 * T))  # E: read-and-sidestep
+	# A bash hook over the chasm in D, to demonstrate the verb for traversal.
+	var bp := BashPoint.new()
+	add_child(bp)
+	bp.global_position = Vector2(82.0 * T, -7.0 * T)
 
 
 func _add_enemy(pos: Vector2) -> void:
 	var e := Enemy.new()
 	add_child(e)
-	e.global_position = pos
+	var room := _room_containing(pos)
+	e.global_position = _clear_of_entrances(pos, room)
+	e.room_bounds = room
+
+
+func _add_typed(e: Node2D, pos: Vector2) -> void:
+	add_child(e)
+	var room := _room_containing(pos)
+	e.global_position = _clear_of_entrances(pos, room)
+	e.set("room_bounds", room)
+
+
+# Doorways sit at the room edges, so hold spawns a few tiles in from both sides
+# (and above the floor) so the player never walks straight into an enemy.
+func _clear_of_entrances(pos: Vector2, room: Rect2) -> Vector2:
+	if room.size == Vector2.ZERO:
+		return pos
+	var m := 3.0 * tile
+	pos.x = clampf(pos.x, room.position.x + m, room.position.x + room.size.x - m)
+	return pos
+
+
+# The room rectangle that contains a point (inset a little so enemies don't
+# clip the doorway seams). Returns an empty Rect2 if the point is roomless.
+func _room_containing(pos: Vector2) -> Rect2:
+	for name in _rooms:
+		var r: Rect2 = _rooms[name]
+		if r.has_point(pos):
+			return r.grow(-tile)
+	return Rect2()
 
 
 # ===========================================================================

@@ -25,8 +25,6 @@ var _max_missiles: int = 0
 var _boss_hp: int = 0
 var _boss_max: int = 1
 var _boss_show: bool = false
-var _banner_text: String = ""
-var _banner_t: float = 0.0
 var _font: Font
 var _draw_node: Control = null
 
@@ -47,10 +45,8 @@ func _ready() -> void:
 	_draw_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_draw_node)
 
-func _process(delta: float) -> void:
-	if _banner_t > 0.0:
-		_banner_t -= delta
-		_redraw()
+func _process(_delta: float) -> void:
+	pass
 
 func bind(player: Node) -> void:
 	_player = player
@@ -86,6 +82,12 @@ func bind_boss(boss: Node) -> void:
 		boss.health_changed.connect(_on_boss_health)
 	if boss.has_signal("engaged"):
 		boss.engaged.connect(_on_boss_engaged)
+	if boss.has_signal("disengaged"):
+		boss.disengaged.connect(_on_boss_disengaged)
+
+func _on_boss_disengaged() -> void:
+	_boss_show = false
+	_redraw()
 	_redraw()
 
 func _on_boss_engaged() -> void:
@@ -97,11 +99,6 @@ func _on_boss_health(current: int, maximum: int) -> void:
 	_boss_max = maximum
 	if current <= 0:
 		_boss_show = false                  # hide on death; only "engaged" shows it
-	_redraw()
-
-func show_pickup(text: String) -> void:
-	_banner_text = str(text)
-	_banner_t = 3.0
 	_redraw()
 
 func _redraw() -> void:
@@ -136,14 +133,6 @@ func _render(c: Control) -> void:
 		c.draw_rect(Rect2(bx, by + 2, bw, 12), Color("#2a1830"))
 		var frac := clampf(float(_boss_hp) / float(maxi(_boss_max, 1)), 0.0, 1.0)
 		c.draw_rect(Rect2(bx, by + 2, bw * frac, 12), Color("#c8455f"))
-
-	# Pickup banner: names the part you just grafted, then fades.
-	if _banner_t > 0.0:
-		var a := clampf(_banner_t / 0.7, 0.0, 1.0)   # fade over the last 0.7s
-		var vw2 := c.size.x
-		var ty := c.size.y * 0.40
-		c.draw_string(_font, Vector2(0, ty), "GRAFTED", HORIZONTAL_ALIGNMENT_CENTER, vw2, 15, Color(0.62, 0.85, 0.55, a * 0.8))
-		c.draw_string(_font, Vector2(0, ty + 30), _banner_text, HORIZONTAL_ALIGNMENT_CENTER, vw2, 30, Color(0.85, 0.94, 0.78, a))
 
 func _plate(c: Control, pos: Vector2, size: Vector2, full: bool) -> void:
 	var w := size.x
