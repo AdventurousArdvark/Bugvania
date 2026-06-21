@@ -127,6 +127,8 @@ var _shake = null
 var _bash_sensor: Area2D = null
 var _f_down: bool = false
 var _grip_held: bool = false
+var _external_vel: Vector2 = Vector2.ZERO
+@export var external_decay: float = 900.0   # how fast a current's push fades on exit
 var health: int = 0:
 	set(value):
 		health = value
@@ -191,8 +193,18 @@ func _physics_process(delta: float) -> void:
 	else:
 		_process_normal(delta, input_x)
 
+	var pre := velocity
+	velocity += _external_vel
 	move_and_slide()
+	velocity = pre                      # external push doesn't pollute owned momentum
+	# Currents refresh _external_vel each frame while you're inside; it fades on exit.
+	_external_vel = _external_vel.move_toward(Vector2.ZERO, external_decay * delta)
 	_post_move()
+
+
+# Called by CurrentZone each physics frame the player is inside it.
+func apply_current(v: Vector2) -> void:
+	_external_vel = v
 
 
 func _update_timers(delta: float) -> void:

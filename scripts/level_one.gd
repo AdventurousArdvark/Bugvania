@@ -59,6 +59,7 @@ func _ready() -> void:
 	_build_surface()
 	_compute_world_bottom()
 	_spawn_enemies()
+	_spawn_hazards()
 	_spawn_player()
 
 
@@ -465,6 +466,47 @@ func _spawn_enemies() -> void:
 	var bp := BashPoint.new()
 	add_child(bp)
 	bp.global_position = Vector2(82.0 * T, -7.0 * T)
+
+
+func _spawn_hazards() -> void:
+	# ROOM D — a traversal puzzle around the chasm (72..80T).
+	# Spikes line the chasm floor (top at 6T): falling in hurts.
+	var sp := Spikes.new()
+	sp.span = 5.0 * T
+	sp.depth = 18.0
+	sp.normal = Vector2.UP
+	sp.damage = 12
+	sp.position = Vector2(76.0 * T, 6.0 * T)
+	add_child(sp)
+	# ...but an updraft column lets you float across (or recover from a fall).
+	var cz := CurrentZone.new()
+	cz.area_size = Vector2(3.0 * T, 8.0 * T)
+	cz.push = Vector2(0.0, -560.0)
+	cz.position = Vector2(76.0 * T, 2.0 * T)
+	add_child(cz)
+	_label(Vector2(74.0 * T, -4.0 * T), "UPDRAFT", 11)
+	# A breakable gate across the entry walkway teaches "shoot to open".
+	var bw := BreakableWall.new()
+	bw.block = Vector2(T, 4.0 * T)
+	bw.hp = 6
+	bw.position = Vector2(70.0 * T, -1.0 * T)
+	add_child(bw)
+	_label(Vector2(68.5 * T, -4.0 * T), "SHOOT", 11)
+	# A one-way ledge up toward the ICE BEAM shelf (jump up through it).
+	var op := OnewayPlatform.new()
+	op.span = 5.0 * T
+	op.position = Vector2(84.0 * T, -4.0 * T)
+	add_child(op)
+
+	# ROOM F — a crusher to time on the way down to the boss door.
+	var cr := Crusher.new()
+	cr.block = Vector2(2.5 * T, 2.5 * T)
+	cr.travel = 3.0 * T
+	cr.dir = Vector2.DOWN
+	cr.damage = 24
+	cr.position = Vector2(124.0 * T, 3.0 * T)
+	add_child(cr)
+	_label(Vector2(122.0 * T, 0.5 * T), "CRUSHER", 11)
 
 
 func _add_enemy(pos: Vector2) -> void:
