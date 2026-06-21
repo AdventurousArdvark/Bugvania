@@ -39,6 +39,7 @@ var _current_room: String = ""
 var _visited: Dictionary = {}            # room names the player has entered
 var _checkpoint: Vector2 = Vector2.ZERO
 var _world_bottom: float = 0.0
+var _hud: Hud = null
 var _r_down: bool = false
 var T: float
 
@@ -55,6 +56,7 @@ func _ready() -> void:
 	_build_room_e()
 	_build_room_f()
 	_build_room_g()
+	_build_surface()
 	_compute_world_bottom()
 	_spawn_enemies()
 	_spawn_player()
@@ -221,6 +223,49 @@ func _build_room_g() -> void:
 	_label(Vector2(x0 + T, -3.0 * T), "BOSS")
 
 
+# The above-ground finale arena, placed high over the hive (open sky). Reached only
+# via begin_surface() after the escape succeeds; the player can't walk here normally.
+const SKY_X0_T := 60.0
+const SKY_X1_T := 100.0
+const SKY_TOP_T := -72.0
+const SKY_FLOOR_T := -50.0
+const SKY_BOT_T := -48.0
+
+func _build_surface() -> void:
+	var x0 := SKY_X0_T * T
+	var x1 := SKY_X1_T * T
+	var top := SKY_TOP_T * T
+	var bot := SKY_BOT_T * T
+	var floor_top := SKY_FLOOR_T * T
+	_register_room("SKY", Rect2(x0, top, x1 - x0, bot - top), Vector2(x0 + 3.0 * T, floor_top - T))
+	_slab(x0, x1, floor_top, bot, C_FLOOR)             # ground
+	_slab(x0, x0 + T, top, floor_top, C_WALL)          # left cliff
+	_slab(x1 - T, x1, top, floor_top, C_WALL)          # right cliff
+	_slab(x0 + 8.0 * T, x0 + 12.0 * T, floor_top - 5.0 * T, floor_top - 4.0 * T, C_FLOOR)   # perches
+	_slab(x1 - 12.0 * T, x1 - 8.0 * T, floor_top - 5.0 * T, floor_top - 4.0 * T, C_FLOOR)
+
+# Called by the escape sequence on success: lift the player out of the hive into the
+# open sky and start the two-phase finale boss.
+func begin_surface() -> void:
+	if _player == null:
+		return
+	get_tree().call_group("game", "room_fade")
+	var entry: Vector2 = _entries.get("SKY", Vector2.ZERO)
+	(_player as Node2D).global_position = entry
+	if _player is CharacterBody2D:
+		(_player as CharacterBody2D).velocity = Vector2.ZERO
+	_player.set("health", int(_player.get("max_health")))   # full heal for the finale
+	_current_room = ""
+	_enter_room("SKY")
+	var sb := SkyBoss.new()
+	add_child(sb)
+	sb.global_position = Vector2((SKY_X0_T + SKY_X1_T) * 0.5 * T, SKY_FLOOR_T * T - sb.size.y * 0.5)
+	sb.hover_y = (SKY_TOP_T + 10.0) * T
+	if _hud != null:
+		_hud.bind_boss(sb)
+	get_tree().create_timer(0.9).timeout.connect(sb.engage)
+
+
 # ===========================================================================
 # ROOM / CAMERA PLUMBING
 # ===========================================================================
@@ -261,8 +306,10 @@ func _enter_room(room_name: String) -> void:
 	get_tree().call_group("escape", "room_entered", room_name)
 	if room_name == "G":
 		get_tree().call_group("boss", "engage")   # wake the boss + show its bar
-	else:
-		get_tree().call_group("boss", "disengage") # left the arena: boss stands down
+	elif room_name != "SKY":
+		get_tree().call_group("boss", "disengage") # left the hive arena: boss stands down
+	if not first and room_name != "SKY":
+		save_progress()                             # autosave at each hive room (checkpoint)
 
 
 # Faint per-area color so rooms feel like distinct places.
@@ -275,6 +322,7 @@ func _room_tint(room_name: String) -> Color:
 		"E": return Color(0.40, 0.28, 0.50, 0.11)   # spore-purple
 		"F": return Color(0.30, 0.22, 0.28, 0.13)   # gloom
 		"G": return Color(0.50, 0.12, 0.12, 0.14)   # the brood
+		"SKY": return Color(0.65, 0.78, 0.95, 0.06)  # open daylight, above the hive
 		_:   return Color(0.30, 0.30, 0.30, 0.10)
 
 
@@ -306,7 +354,18 @@ func _apply_camera_limits(rect: Rect2) -> void:
 # ===========================================================================
 
 func _spawn_player() -> void:
+	var data := SaveSystem.load_data()
 	var spawn: Vector2 = _entries.get("A", Vector2.ZERO)
+	var start_room := "A"
+	if not data.is_empty():
+		var cp: Variant = data.get("checkpoint", null)
+		if cp is Array and (cp as Array).size() == 2:
+			spawn = Vector2(float(cp[0]), float(cp[1]))
+		start_room = str(data.get("current_room", "A"))
+		var vis: Variant = data.get("visited", [])
+		if vis is Array:
+			for r in vis:
+				_visited[str(r)] = true
 	_checkpoint = spawn
 	if player_scene != null:
 		_player = player_scene.instantiate()
@@ -316,6 +375,7 @@ func _spawn_player() -> void:
 		_cam = _find_camera(_player)
 		if _player.has_signal("died"):
 			_player.died.connect(_respawn)
+		_apply_abilities(data)
 	else:
 		_label(spawn + Vector2(-3.0 * T, -2.0 * T), "▶ set player_scene to spawn here")
 	if _cam != null:
@@ -324,9 +384,10 @@ func _spawn_player() -> void:
 		_cam.limit_smoothed = true        # smooth pan when limits change between rooms
 	else:
 		push_warning("Level1: no Camera2D found on the player - add one as a child of the player scene.")
-	_enter_room("A")
+	_enter_room(start_room)
 	if _player != null:
 		var hud := Hud.new()
+		_hud = hud
 		add_child(hud)
 		hud.bind(_player)
 		for b in get_tree().get_nodes_in_group("boss"):
@@ -335,6 +396,38 @@ func _spawn_player() -> void:
 		add_child(menu)
 		menu.bind(_player)
 		menu.set_map_source(self)
+
+
+# --- save/restore -----------------------------------------------------------
+func save_progress() -> void:
+	if _player == null:
+		return
+	var ab := {}
+	for k in ["has_charge", "has_ice", "has_wave", "has_missiles",
+			"has_double_jump", "has_dash", "has_wall_jump", "has_slide"]:
+		ab[k] = bool(_player.get(k))
+	SaveSystem.save({
+		"abilities": ab,
+		"charge_active": bool(_player.get("charge_active")),
+		"ice_active": bool(_player.get("ice_active")),
+		"wave_active": bool(_player.get("wave_active")),
+		"missiles": int(_player.get("missiles")),
+		"visited": _visited.keys(),
+		"current_room": _current_room,
+		"checkpoint": [_checkpoint.x, _checkpoint.y],
+	})
+
+func _apply_abilities(data: Dictionary) -> void:
+	if data.is_empty() or _player == null:
+		return
+	var ab: Variant = data.get("abilities", {})
+	if ab is Dictionary:
+		for k in ab:
+			_player.set(str(k), bool(ab[k]))
+	_player.set("charge_active", bool(data.get("charge_active", true)))
+	_player.set("ice_active", bool(data.get("ice_active", true)))
+	_player.set("wave_active", bool(data.get("wave_active", true)))
+	_player.set("missiles", int(data.get("missiles", 0)))
 
 
 func _find_camera(n: Node) -> Camera2D:

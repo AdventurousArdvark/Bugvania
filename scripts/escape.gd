@@ -21,7 +21,7 @@ var _sub_label: Label = null
 
 func _ready() -> void:
 	add_to_group("escape")
-	layer = 48
+	layer = 30                         # above HUD (10), below loadout (40) and pause (50)
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_rng.randomize()
 	_time_left = duration
@@ -101,7 +101,8 @@ func _succeed() -> void:
 	_over = true
 	get_tree().call_group("camera_rig", "shake", 8.0, 0.4)
 	_clear_ui()
-	get_tree().call_group("game", "show_end", "YOU ESCAPED")
+	Audio.play("charge_ready")
+	get_tree().call_group("level", "begin_surface")   # burst into open sky -> finale
 
 func _fail() -> void:
 	_over = true

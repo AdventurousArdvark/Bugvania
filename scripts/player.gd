@@ -126,6 +126,7 @@ var _shake = null
 @export var bash_air_refresh: bool = true
 var _bash_sensor: Area2D = null
 var _f_down: bool = false
+var _grip_held: bool = false
 var health: int = 0:
 	set(value):
 		health = value
@@ -262,10 +263,16 @@ func _handle_horizontal(delta: float, input_x: float) -> void:
 func _handle_wall() -> void:
 	_is_wall_sliding = false
 	if is_on_floor() or not is_on_wall_only():
+		_grip_held = false
 		return
-	# Cling ONLY while holding the grab button (same key as slide; grounded slide
-	# and airborne grab never overlap). No auto-stick = not sticky.
-	if Input.is_action_pressed("slide") and velocity.y > 0.0:
+	# Cling while the grab button is engaged. In Hold mode that means held; in
+	# Toggle mode a press flips a latch that releases on the next press.
+	var engaged := Input.is_action_pressed("slide")
+	if Settings.grip_toggle:
+		if Input.is_action_just_pressed("slide"):
+			_grip_held = not _grip_held
+		engaged = _grip_held
+	if engaged and velocity.y > 0.0:
 		_is_wall_sliding = true
 		velocity.y = minf(velocity.y, wall_slide_speed)
 		# Light inward pull so contact holds even without pressing toward the wall.

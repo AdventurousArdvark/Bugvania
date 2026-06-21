@@ -14,6 +14,13 @@ class_name BossVisual
 var pose: String = "dormant"     # dormant | idle | windup | lunge | volley | stagger
 var phase2: bool = false
 var face: int = -1
+var flying: bool = false          # airborne second phase: big wings, tucked legs
+var beam_charge: float = 0.0      # 0..1 telegraph
+var beam_on: bool = false
+var beam_from: Vector2 = Vector2.ZERO   # muzzle offset from boss origin (world-oriented)
+var beam_dir: Vector2 = Vector2.RIGHT
+var beam_len: float = 640.0
+var beam_width: float = 12.0
 
 var _t: float = 0.0
 var _raise: float = 0.2          # scythe-arm raise (-1 slam .. +1 reared)
@@ -76,21 +83,32 @@ func _draw() -> void:
 		draw_circle(ep, hh * 0.16, Color(egg_col.r, egg_col.g, egg_col.b, clampf(glow, 0.0, 1.0) * on * (0.5 + 0.5 * _wake)))
 		draw_circle(ep, hh * 0.07, Color(egg_col.r, egg_col.g, egg_col.b, on * (0.4 + 0.5 * _wake)))
 
-	# --- ragged wing stubs ---
-	for sgn in [-1.0, 1.0]:
-		var wb := Vector2(-hw * 0.2 + lean * 0.4, -hh * 0.5 + curl)
-		draw_colored_polygon(PackedVector2Array([
-			wb, wb + Vector2(-hw * 0.5, -hh * 0.7 - sgn * hh * 0.2), wb + Vector2(hw * 0.1, -hh * 0.3),
-		]), Color(_darker.r, _darker.g, _darker.b, 0.6))
+	# --- wings: ragged stubs on the ground, large flapping membranes in the air ---
+	if flying:
+		var flap := 0.45 + 0.55 * (0.5 + 0.5 * sin(_t * 9.0))
+		for sgn in [0.85, 1.0]:
+			var wb := Vector2(-hw * 0.1 + lean * 0.4, -hh * 0.4)
+			var tip := wb + Vector2(-hw * 1.4 * sgn, -hh * (1.6 * flap + 0.2))
+			var mid := wb + Vector2(hw * 0.3, -hh * 0.6 * flap)
+			draw_colored_polygon(PackedVector2Array([wb, tip, mid]),
+				Color(_membrane.r, _membrane.g, _membrane.b, 0.42))
+			draw_polyline(PackedVector2Array([wb, tip, mid]), Color(_darker.r, _darker.g, _darker.b, 0.7), 1.5)
+	else:
+		for sgn in [-1.0, 1.0]:
+			var wb := Vector2(-hw * 0.2 + lean * 0.4, -hh * 0.5 + curl)
+			draw_colored_polygon(PackedVector2Array([
+				wb, wb + Vector2(-hw * 0.5, -hh * 0.7 - sgn * hh * 0.2), wb + Vector2(hw * 0.1, -hh * 0.3),
+			]), Color(_darker.r, _darker.g, _darker.b, 0.6))
 
-	# --- six heavy legs ---
+	# --- six heavy legs (tuck up when airborne) ---
+	var tuck := 1.0 if flying else 0.0
 	for i in 6:
 		var side := -1.0 if i < 3 else 1.0
 		var lx := lerpf(-hw * 0.5, hw * 0.45, float(i % 3) / 2.0)
-		var hip := Vector2(lx + lean * 0.3, hh * 0.55 + curl)
-		var wig := sin(_t * 3.0 + float(i) * 1.3) * 0.12 * _wake
-		var spread := (float(i % 3) - 1.0) * 0.5 + side * 0.15 - _raise * 0.2
-		_leg(hip, PI * 0.5 + spread + wig, hh * 0.9, hh * 0.8, _darker, 3.5)
+		var hip := Vector2(lx + lean * 0.3, hh * (0.55 - 0.25 * tuck) + curl)
+		var wig := sin(_t * (3.0 + 3.0 * tuck) + float(i) * 1.3) * 0.12 * _wake
+		var spread := (float(i % 3) - 1.0) * 0.5 + side * 0.15 - _raise * 0.2 + tuck * 0.5
+		_leg(hip, PI * 0.5 + spread + wig, hh * (0.9 - 0.3 * tuck), hh * (0.8 - 0.3 * tuck), _darker, 3.5)
 
 	# --- thorax ---
 	var thx := Vector2(hw * 0.05 + lean, hh * 0.0 + curl * 0.5)
@@ -121,7 +139,26 @@ func _draw() -> void:
 
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-# ---- helpers -------------------------------------------------------------
+	# --- sustained beam special (drawn world-aligned; boss feeds muzzle + dir) ---
+	if beam_charge > 0.0 and not beam_on:
+		# Charging: a swelling glow at the maw and a thin warning line along the path.
+		draw_circle(beam_from, hh * 0.35 * beam_charge, Color(eye_col.r, eye_col.g, eye_col.b, 0.5 * beam_charge))
+		draw_line(beam_from, beam_from + beam_dir * beam_len,
+			Color(eye_col.r, eye_col.g, eye_col.b, 0.3 * beam_charge), 1.0 + 3.0 * beam_charge)
+	if beam_on:
+		var perp := Vector2(-beam_dir.y, beam_dir.x)
+		var w := beam_width * (1.0 + 0.12 * sin(_t * 40.0))
+		var a := beam_from
+		var b := beam_from + beam_dir * beam_len
+		# Outer glow, then bright core.
+		draw_colored_polygon(PackedVector2Array([
+			a + perp * w * 2.0, b + perp * w * 2.0, b - perp * w * 2.0, a - perp * w * 2.0,
+		]), Color(eye_col.r, eye_col.g, eye_col.b, 0.25))
+		draw_colored_polygon(PackedVector2Array([
+			a + perp * w, b + perp * w, b - perp * w, a - perp * w,
+		]), Color(eye_col.r, eye_col.g, eye_col.b, 0.85))
+		draw_line(a, b, Color(1, 1, 1, 0.9), w * 0.5)
+		draw_circle(a, w * 1.8, Color(eye_col.r, eye_col.g, eye_col.b, 0.7))
 
 func _oval(ctr: Vector2, rx: float, ry: float, col: Color, segs: int = 22) -> void:
 	var pts := PackedVector2Array()

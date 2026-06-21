@@ -37,7 +37,8 @@ var _parts: Array = []
 var _cell_rects: Array = []          # design-space Rect2 per part cell
 var _tab_rects: Array = []           # design-space Rect2 per tab header
 var _map_source = null
-var _tab: int = 0                    # 0 = ASSEMBLY, 1 = MAP
+var _tab: int = 0                    # 0 = ASSEMBLY, 1 = MAP, 2 = SETTINGS
+var _set_idx: int = 0                # selected settings row
 var _ui_scale: float = 1.0           # design -> screen scale (set each render)
 var _ui_off: Vector2 = Vector2.ZERO  # design -> screen offset (set each render)
 var _draw_node: Control = null
@@ -100,18 +101,18 @@ func _input(event: InputEvent) -> void:
 	if toggle or event.is_action_pressed("ui_cancel"):
 		_close_menu()
 		return
-	# Tab switching: Q/E keys or gamepad shoulders.
+	# Tab switching: Q/E cycle, or gamepad shoulders.
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_Q:
-			_set_tab(0); return
+			_set_tab(wrapi(_tab - 1, 0, 3)); return
 		elif event.keycode == KEY_E:
-			_set_tab(1); return
+			_set_tab(wrapi(_tab + 1, 0, 3)); return
 	if event is InputEventJoypadButton and event.pressed:
 		if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
-			_set_tab(0); return
+			_set_tab(wrapi(_tab - 1, 0, 3)); return
 		elif event.button_index == JOY_BUTTON_RIGHT_SHOULDER:
-			_set_tab(1); return
-	# Mouse: header click switches tabs; otherwise toggle a part (assembly only).
+			_set_tab(wrapi(_tab + 1, 0, 3)); return
+	# Mouse: header click switches tabs; otherwise act on the current tab.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var dm := _to_design(_draw_node.get_global_mouse_position())
 		for t in _tab_rects.size():
@@ -119,8 +120,10 @@ func _input(event: InputEvent) -> void:
 				_set_tab(t); return
 		if _tab == 0:
 			_toggle_current()
+		elif _tab == 2:
+			_settings_activate()
 		return
-	# Grid nav (assembly only).
+	# Per-tab navigation.
 	if _tab == 0:
 		if event.is_action_pressed("ui_left"):
 			_move(-1)
@@ -132,6 +135,17 @@ func _input(event: InputEvent) -> void:
 			_move(_cols)
 		elif event.is_action_pressed("ui_accept"):
 			_toggle_current()
+	elif _tab == 2:
+		if event.is_action_pressed("ui_up"):
+			_set_idx = wrapi(_set_idx - 1, 0, _settings_rows()); _redraw()
+		elif event.is_action_pressed("ui_down"):
+			_set_idx = wrapi(_set_idx + 1, 0, _settings_rows()); _redraw()
+		elif event.is_action_pressed("ui_left"):
+			_settings_adjust(-1)
+		elif event.is_action_pressed("ui_right"):
+			_settings_adjust(1)
+		elif event.is_action_pressed("ui_accept"):
+			_settings_activate()
 
 func _set_tab(t: int) -> void:
 	if t == _tab:
@@ -190,8 +204,10 @@ func _render(c: Control) -> void:
 	_draw_tabs(c)
 	if _tab == 0:
 		_draw_assembly(c)
-	else:
+	elif _tab == 1:
 		_draw_map(c)
+	else:
+		_draw_settings(c)
 	_draw_footer(c)
 
 	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -204,7 +220,7 @@ func _draw_frame(c: Control) -> void:
 
 func _draw_tabs(c: Control) -> void:
 	_tab_rects.clear()
-	var labels := ["ASSEMBLY", "MAP"]
+	var labels := ["ASSEMBLY", "MAP", "SETTINGS"]
 	var fs := 24
 	var pad := 30.0
 	var gap := 14.0
@@ -235,10 +251,86 @@ func _draw_tabs(c: Control) -> void:
 	c.draw_line(Vector2(MARGIN, 122.0), Vector2(DESIGN.x - MARGIN, 122.0), PANEL_EDGE, 1.0)
 
 func _draw_footer(c: Control) -> void:
-	var hint := "navigate  ·  ENTER suppress / restore  ·  Q / E  switch tabs  ·  TAB close" if _tab == 0 \
-		else "Q / E  switch tabs  ·  TAB close"
+	var hint := "Q / E  switch tabs  ·  TAB close"
+	if _tab == 0:
+		hint = "navigate  ·  ENTER suppress / restore  ·  Q / E  switch tabs  ·  TAB close"
+	elif _tab == 2:
+		hint = "up / down  select  ·  left / right  adjust  ·  ENTER  activate  ·  Q / E  tabs"
 	c.draw_string(_font, Vector2(MARGIN, DESIGN.y - 40.0), hint,
 		HORIZONTAL_ALIGNMENT_CENTER, DESIGN.x - MARGIN * 2.0, 14, TEXT_MUTE)
+
+# ---- SETTINGS tab --------------------------------------------------------
+
+func _settings_rows() -> int:
+	return 6
+
+func _settings_adjust(dir: int) -> void:
+	match _set_idx:
+		0: Settings.master_volume = clampf(Settings.master_volume + float(dir) * 0.05, 0.0, 1.0)
+		1: Settings.shake_scale = clampf(Settings.shake_scale + float(dir) * 0.1, 0.0, 1.5)
+		2: Settings.rumble_on = dir > 0
+		3: Settings.grip_toggle = dir > 0
+		_: return
+	Settings.apply()
+	Settings.save_settings()
+	Audio.play("hit")
+	_redraw()
+
+func _settings_activate() -> void:
+	if _set_idx == 4:
+		get_tree().call_group("level", "save_progress")
+		Audio.play("charge_ready")
+	elif _set_idx == 5:
+		SaveSystem.clear()
+		get_tree().paused = false
+		get_tree().reload_current_scene()
+
+func _draw_settings(c: Control) -> void:
+	var panel := Rect2(MARGIN + 120.0, 150.0, DESIGN.x - 2.0 * (MARGIN + 120.0), 470.0)
+	_panel(c, panel, "OPTIONS")
+	var rows := [
+		["MASTER VOLUME", "slider", Settings.master_volume / 1.0],
+		["SCREEN SHAKE", "slider", Settings.shake_scale / 1.5],
+		["RUMBLE", "text", 1.0 if Settings.rumble_on else 0.0],
+		["WALL GRIP", "text", 1.0 if Settings.grip_toggle else 0.0],
+		["SAVE GAME", "button", 0.0],
+		["RESET PROGRESS", "button", 0.0],
+	]
+	var y := panel.position.y + 70.0
+	var rh := 60.0
+	var lx := panel.position.x + 36.0
+	var rx := panel.position.x + panel.size.x * 0.52
+	var rw := panel.size.x * 0.42 - 36.0
+	for i in rows.size():
+		var row: Array = rows[i]
+		var sel: bool = i == _set_idx
+		if sel:
+			c.draw_rect(Rect2(panel.position.x + 12.0, y - 22.0, panel.size.x - 24.0, rh - 12.0),
+				Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.12))
+		var lcol: Color = TEXT if sel else TEXT_DIM
+		c.draw_string(_font, Vector2(lx, y), str(row[0]), HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.5, 20, lcol)
+		match row[1]:
+			"slider":
+				var frac: float = float(row[2])
+				var bar := Rect2(rx, y - 14.0, rw, 14.0)
+				c.draw_rect(bar, Color(0, 0, 0, 0.35))
+				c.draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), ACCENT if sel else ACCENT_DIM)
+				c.draw_rect(bar, PANEL_EDGE, false, 1.0)
+				c.draw_string(_font, Vector2(rx + rw + 14.0, y), "%d%%" % int(round(frac * 100.0)),
+					HORIZONTAL_ALIGNMENT_LEFT, 80, 18, lcol)
+			"text":
+				var on: bool = float(row[2]) > 0.5
+				var label := ("ON" if on else "OFF")
+				if i == 3:
+					label = ("TOGGLE" if on else "HOLD")
+				c.draw_string(_font, Vector2(rx, y), "‹  " + label + "  ›", HORIZONTAL_ALIGNMENT_LEFT, rw, 20, lcol)
+			"button":
+				var brect := Rect2(rx, y - 24.0, 220.0, 36.0)
+				c.draw_rect(brect, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.18 if sel else 0.08))
+				c.draw_rect(brect, ACCENT if sel else PANEL_EDGE, false, 1.5)
+				c.draw_string(_font, Vector2(brect.position.x, y), "  press ENTER",
+					HORIZONTAL_ALIGNMENT_LEFT, brect.size.x, 16, lcol)
+		y += rh
 
 # ---- ASSEMBLY tab --------------------------------------------------------
 
