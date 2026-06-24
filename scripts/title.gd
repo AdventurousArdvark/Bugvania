@@ -29,6 +29,9 @@ var _flick: float = 1.0
 var _selected: int = 0
 var _items := ["START", "QUIT"]
 var _item_rects: Array = []
+var _mode: int = 0                 # 0 = main menu, 1 = profile select
+var _psel: int = 0                 # 0..2 profiles, 3 = back
+var _prects: Array = []
 var _bugs: Array = []
 var _motes: Array = []
 var _eyes: Array = []
@@ -150,22 +153,45 @@ func _draw() -> void:
 
 	draw_string(_font, Vector2(0, ty + 34), subtitle_text, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, SUB_COL)
 
-	# Menu.
-	_item_rects.clear()
-	var my := sz.y * 0.62
-	for i in _items.size():
-		var s : String = _items[i]
-		var col := MENU_SEL if i == _selected else MENU_COL
-		var fs := 30 if i == _selected else 26
-		var y := my + i * 48.0
-		draw_string(_font, Vector2(0, y), s, HORIZONTAL_ALIGNMENT_CENTER, sz.x, fs, col)
-		_item_rects.append(Rect2(sz.x * 0.5 - 120, y - 28, 240, 40))
-		if i == _selected:
-			# a small crawling marker beside the selected item
-			var mx := sz.x * 0.5 - 130 + sin(_t * 6.0) * 3.0
-			draw_circle(Vector2(mx, y - 9), 3.0, MENU_SEL)
+	# Menu / profile select.
+	if _mode == 0:
+		_item_rects.clear()
+		var my := sz.y * 0.62
+		for i in _items.size():
+			var s : String = _items[i]
+			var col := MENU_SEL if i == _selected else MENU_COL
+			var fs := 30 if i == _selected else 26
+			var y := my + i * 48.0
+			draw_string(_font, Vector2(0, y), s, HORIZONTAL_ALIGNMENT_CENTER, sz.x, fs, col)
+			_item_rects.append(Rect2(sz.x * 0.5 - 120, y - 28, 240, 40))
+			if i == _selected:
+				var mx := sz.x * 0.5 - 130 + sin(_t * 6.0) * 3.0
+				draw_circle(Vector2(mx, y - 9), 3.0, MENU_SEL)
+		draw_string(_font, Vector2(0, sz.y - 28), "arrows / mouse  ·  enter to select", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 14, Color(SUB_COL.r, SUB_COL.g, SUB_COL.b, 0.6))
+	else:
+		_draw_profiles(sz)
 
-	draw_string(_font, Vector2(0, sz.y - 28), "arrows / mouse  ·  enter to select", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 14, Color(SUB_COL.r, SUB_COL.g, SUB_COL.b, 0.6))
+func _draw_profiles(sz: Vector2) -> void:
+	draw_string(_font, Vector2(0, sz.y * 0.5), "SELECT VESSEL", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 22, SUB_COL)
+	_prects.clear()
+	var my := sz.y * 0.56
+	for i in 3:
+		var sel := i == _psel
+		var col := MENU_SEL if sel else MENU_COL
+		var y := my + i * 44.0
+		var name := "VESSEL %d" % (i + 1)
+		var sub : String = SaveSystem.summary(i)
+		draw_string(_font, Vector2(sz.x * 0.5 - 200, y), name, HORIZONTAL_ALIGNMENT_LEFT, 200, 24 if sel else 22, col)
+		draw_string(_font, Vector2(sz.x * 0.5 - 10, y), sub, HORIZONTAL_ALIGNMENT_LEFT, 260, 18, Color(col.r, col.g, col.b, 0.8))
+		_prects.append(Rect2(sz.x * 0.5 - 210, y - 26, 470, 38))
+		if sel:
+			draw_circle(Vector2(sz.x * 0.5 - 220 + sin(_t * 6.0) * 3.0, y - 9), 3.0, MENU_SEL)
+	# BACK row
+	var by := my + 3 * 44.0 + 14.0
+	var bcol := MENU_SEL if _psel == 3 else MENU_COL
+	draw_string(_font, Vector2(0, by), "BACK", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 24 if _psel == 3 else 22, bcol)
+	_prects.append(Rect2(sz.x * 0.5 - 80, by - 26, 160, 38))
+	draw_string(_font, Vector2(0, sz.y - 28), "enter: play  ·  X / Del: erase  ·  esc: back", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 14, Color(SUB_COL.r, SUB_COL.g, SUB_COL.b, 0.6))
 
 func _draw_bug(pos: Vector2, s: float, ph: float, dir: int) -> void:
 	var fwd := Vector2(dir, 0)
@@ -192,6 +218,9 @@ func _draw_bug(pos: Vector2, s: float, ph: float, dir: int) -> void:
 func _input(event: InputEvent) -> void:
 	if _starting:
 		return
+	if _mode == 1:
+		_input_profiles(event)
+		return
 	if event.is_action_pressed("ui_down"):
 		_move_sel(1)
 	elif event.is_action_pressed("ui_up"):
@@ -206,21 +235,61 @@ func _input(event: InputEvent) -> void:
 				_selected = i
 				_activate()
 
+func _input_profiles(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_down"):
+		_psel = (_psel + 1) % 4
+		_play_blip(660.0)
+	elif event.is_action_pressed("ui_up"):
+		_psel = (_psel + 3) % 4
+		_play_blip(660.0)
+	elif event.is_action_pressed("ui_accept"):
+		_activate()
+	elif event.is_action_pressed("ui_cancel"):
+		_mode = 0
+		_play_blip(440.0)
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_DELETE or event.keycode == KEY_X):
+		if _psel < 3:
+			SaveSystem.clear(_psel)        # erase that vessel
+			_play_blip(280.0)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		for i in _prects.size():
+			if _prects[i].has_point(event.position):
+				_psel = i
+				_activate()
+
 func _move_sel(d: int) -> void:
 	_selected = (_selected + d + _items.size()) % _items.size()
 	_play_blip(660.0)
 
 func _update_mouse_selection() -> void:
 	var mp := get_global_mouse_position()
+	if _mode == 1:
+		for i in _prects.size():
+			if _prects[i].has_point(mp) and _psel != i:
+				_psel = i
+				_play_blip(660.0)
+		return
 	for i in _item_rects.size():
 		if _item_rects[i].has_point(mp) and _selected != i:
 			_selected = i
 			_play_blip(660.0)
 
 func _activate() -> void:
-	if _items[_selected] == "QUIT":
-		get_tree().quit()
+	if _mode == 0:
+		if _items[_selected] == "QUIT":
+			get_tree().quit()
+		else:
+			_mode = 1                       # START -> choose a vessel
+			_psel = 0
+			_play_blip(880.0)
 		return
+	# Profile select.
+	if _psel == 3:
+		_mode = 0
+		_play_blip(440.0)
+		return
+	SaveSystem.set_slot(_psel)
 	_start_game()
 
 func _start_game() -> void:

@@ -128,7 +128,11 @@ var _bash_sensor: Area2D = null
 var _f_down: bool = false
 var _grip_held: bool = false
 var _external_vel: Vector2 = Vector2.ZERO
+var _hit_recent: float = 0.0
 @export var external_decay: float = 900.0   # how fast a current's push fades on exit
+
+func is_hurt_knockback() -> bool:
+	return _hit_recent > 0.0
 var health: int = 0:
 	set(value):
 		health = value
@@ -208,6 +212,8 @@ func apply_current(v: Vector2) -> void:
 
 
 func _update_timers(delta: float) -> void:
+	if _hit_recent > 0.0:
+		_hit_recent -= delta
 	if _jump_buffer > 0.0:
 		_jump_buffer -= delta
 	if _dash_cd > 0.0:
@@ -446,6 +452,7 @@ func take_damage(amount: int, from_pos = null) -> void:
 	_iframes = 1.0
 	_flash_t = 0.12
 	_hit_lock = 0.16
+	_hit_recent = 0.5                # room transitions during this window don't checkpoint
 	if from_pos != null:
 		var dir := signf((global_position - from_pos).x)
 		if dir == 0.0:

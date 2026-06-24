@@ -297,13 +297,20 @@ func _enter_room(room_name: String) -> void:
 	if room_name == _current_room:
 		return
 	var first := _current_room == ""
+	# If the player was knocked across the boundary by a hit, follow with the camera
+	# but don't treat it as a real arrival: no checkpoint move, no autosave, no boss
+	# engage/disengage. Prevents knockback from corrupting your save/checkpoint.
+	var knocked: bool = _player != null and _player.has_method("is_hurt_knockback") \
+		and _player.is_hurt_knockback()
 	_current_room = room_name
 	_visited[room_name] = true
-	_checkpoint = _entries[room_name]
 	_apply_camera_limits(_rooms[room_name])
 	get_tree().call_group("ambiance", "set_tint", _room_tint(room_name))
 	if not first:
 		get_tree().call_group("game", "room_fade")
+	if knocked:
+		return
+	_checkpoint = _entries[room_name]
 	get_tree().call_group("escape", "room_entered", room_name)
 	if room_name == "G":
 		get_tree().call_group("boss", "engage")   # wake the boss + show its bar
@@ -460,8 +467,8 @@ func _spawn_enemies() -> void:
 	_add_enemy(Vector2(108.0 * T, -2.0 * T))           # E: beyond the double-jump gate
 	# Variety with readable tells, introduced one mechanic at a time:
 	_add_typed(Spitter.new(), Vector2(40.0 * T, -2.0 * T))   # B: learn to dodge shots
-	_add_typed(Flyer.new(),   Vector2(90.0 * T, -6.0 * T))   # D: airborne swooper
-	_add_typed(Charger.new(), Vector2(112.0 * T, -2.0 * T))  # E: read-and-sidestep
+	_add_typed(Flyer.new(),   Vector2(86.0 * T, -6.0 * T))   # D: airborne swooper (interior, not on the D/E line)
+	_add_typed(Charger.new(), Vector2(104.0 * T, -2.0 * T))  # E: read-and-sidestep (interior, not on the E/F line)
 	# A bash hook over the chasm in D, to demonstrate the verb for traversal.
 	var bp := BashPoint.new()
 	add_child(bp)
@@ -512,25 +519,47 @@ func _spawn_hazards() -> void:
 func _add_enemy(pos: Vector2) -> void:
 	var e := Enemy.new()
 	add_child(e)
-	var room := _room_containing(pos)
-	e.global_position = _clear_of_entrances(pos, room)
-	e.room_bounds = room
+	var rn := _room_name_at(pos)
+	e.global_position = _safe_spawn(pos, rn)
+	e.room_bounds = _rooms[rn].grow(-tile) if rn != "" else Rect2()
 
 
 func _add_typed(e: Node2D, pos: Vector2) -> void:
 	add_child(e)
-	var room := _room_containing(pos)
-	e.global_position = _clear_of_entrances(pos, room)
-	e.set("room_bounds", room)
+	var rn := _room_name_at(pos)
+	e.global_position = _safe_spawn(pos, rn)
+	e.set("room_bounds", _rooms[rn].grow(-tile) if rn != "" else Rect2())
 
 
-# Doorways sit at the room edges, so hold spawns a few tiles in from both sides
-# (and above the floor) so the player never walks straight into an enemy.
-func _clear_of_entrances(pos: Vector2, room: Rect2) -> Vector2:
-	if room.size == Vector2.ZERO:
+# The room a point belongs to, chosen by the deepest interior margin so a point
+# sitting exactly on a shared boundary resolves to the room it's actually inside
+# (not the neighbor). This was the cause of enemies landing by the wrong doorway.
+func _room_name_at(pos: Vector2) -> String:
+	var best := ""
+	var best_margin := -INF
+	for name in _rooms:
+		var r: Rect2 = _rooms[name]
+		var mx := minf(pos.x - r.position.x, r.position.x + r.size.x - pos.x)
+		var my := minf(pos.y - r.position.y, r.position.y + r.size.y - pos.y)
+		var m := minf(mx, my)
+		if m > best_margin:
+			best_margin = m
+			best = name
+	return best
+
+
+# Keep a spawn clear of the room's walls AND its entry point so the player never
+# walks straight into an enemy on a room transition.
+func _safe_spawn(pos: Vector2, room_name: String) -> Vector2:
+	if room_name == "" or not _rooms.has(room_name):
 		return pos
-	var m := 3.0 * tile
-	pos.x = clampf(pos.x, room.position.x + m, room.position.x + room.size.x - m)
+	var r: Rect2 = _rooms[room_name]
+	var m := 4.0 * tile
+	pos.x = clampf(pos.x, r.position.x + m, r.position.x + r.size.x - m)
+	var entry: Vector2 = _entries.get(room_name, pos)
+	if absf(pos.x - entry.x) < 4.0 * tile:
+		pos.x = entry.x + (4.0 * tile if pos.x >= entry.x else -4.0 * tile)
+		pos.x = clampf(pos.x, r.position.x + m, r.position.x + r.size.x - m)
 	return pos
 
 

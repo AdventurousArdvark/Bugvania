@@ -25,6 +25,7 @@ var _max_missiles: int = 0
 var _boss_hp: int = 0
 var _boss_max: int = 1
 var _boss_show: bool = false
+var _boss_phase: int = 1
 var _font: Font
 var _draw_node: Control = null
 
@@ -84,6 +85,14 @@ func bind_boss(boss: Node) -> void:
 		boss.engaged.connect(_on_boss_engaged)
 	if boss.has_signal("disengaged"):
 		boss.disengaged.connect(_on_boss_disengaged)
+	if boss.has_signal("phase_changed"):
+		boss.phase_changed.connect(_on_boss_phase)
+	_boss_phase = 1
+
+func _on_boss_phase(phase: int) -> void:
+	_boss_phase = phase
+	_boss_show = true                       # the second bar appears (don't stay hidden)
+	_redraw()
 
 func _on_boss_disengaged() -> void:
 	_boss_show = false
@@ -128,11 +137,13 @@ func _render(c: Control) -> void:
 		var bw := vw * 0.5
 		var bx := (vw - bw) * 0.5
 		var by := c.size.y - 50.0
-		c.draw_string(_font, Vector2(0, by - 6), "VESSEL", HORIZONTAL_ALIGNMENT_CENTER, vw, 14, Color("#c8455f"))
+		var bar_col := Color("#ff7a3c") if _boss_phase >= 2 else Color("#c8455f")
+		var label := "VESSEL — ASCENDANT" if _boss_phase >= 2 else "VESSEL"
+		c.draw_string(_font, Vector2(0, by - 6), label, HORIZONTAL_ALIGNMENT_CENTER, vw, 14, bar_col)
 		c.draw_rect(Rect2(bx - 2, by, bw + 4, 16), Color("#1a0f1f"))
 		c.draw_rect(Rect2(bx, by + 2, bw, 12), Color("#2a1830"))
 		var frac := clampf(float(_boss_hp) / float(maxi(_boss_max, 1)), 0.0, 1.0)
-		c.draw_rect(Rect2(bx, by + 2, bw * frac, 12), Color("#c8455f"))
+		c.draw_rect(Rect2(bx, by + 2, bw * frac, 12), bar_col)
 
 func _plate(c: Control, pos: Vector2, size: Vector2, full: bool) -> void:
 	var w := size.x
