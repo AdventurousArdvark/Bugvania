@@ -116,6 +116,17 @@ var _wall_jump_dir := 0.0     # +1 = launched rightward (off a left wall), -1 = 
 var _air_dash_used := false
 var _double_jump_used := false
 var _fast_falling := false
+
+# --- GRAFTS: harvested parts you OWN vs. the limited set you have EQUIPPED -------
+# has_X flags = currently equipped/active (gameplay reads these, unchanged).
+# `_owned` = every part you've harvested (permanent). The loadout screen swaps
+# which owned parts fill your limited slots; equipped MASS reshapes your physics.
+@export var graft_capacity: int = 4
+var _owned: Dictionary = {}
+var _grav_mult: float = 1.0
+var _fallcap_mult: float = 1.0
+var _airspeed_mult: float = 1.0
+var _knock_mult: float = 1.0
 var _is_sliding := false
 var _is_wall_sliding := false
 var _facing := 1
@@ -147,6 +158,11 @@ func _ready() -> void:
 	collision_layer = 2          # Player layer, so your own beams pass through you
 	add_to_group("player")       # so hostile (boss) projectiles can find you
 	health = max_health
+	# Whatever flags start true are considered already harvested + equipped.
+	for key in Grafts.CATALOG:
+		if get(key) == true:
+			_owned[key] = true
+	_recompute_grafts()
 	# Auto-attach the base-beam cannon so shooting works without editing the scene.
 	var has_weapon := false
 	for c in get_children():
@@ -214,6 +230,87 @@ func _physics_process(delta: float) -> void:
 func apply_current(v: Vector2) -> void:
 	_external_vel = v
 
+# --- graft API ------------------------------------------------------------
+
+func harvest(key: String) -> void:
+	if not Grafts.has(key):
+		set(key, true)               # non-catalog flags still flip (forward-compat)
+		return
+	_owned[key] = true
+	if used_slots() + Grafts.slot_of(key) <= graft_capacity:
+		equip(key)                   # auto-equip if there's room
+	else:
+		_recompute_grafts()
+
+func is_owned(key: String) -> bool:
+	return bool(_owned.get(key, false))
+
+func is_equipped(key: String) -> bool:
+	return get(key) == true
+
+func used_slots() -> int:
+	var s := 0
+	for key in Grafts.CATALOG:
+		if is_equipped(key):
+			s += Grafts.slot_of(key)
+	return s
+
+func total_mass() -> int:
+	var m := 0
+	for key in Grafts.CATALOG:
+		if is_equipped(key):
+			m += Grafts.mass_of(key)
+	return m
+
+func can_equip(key: String) -> bool:
+	return is_owned(key) and not is_equipped(key) \
+		and used_slots() + Grafts.slot_of(key) <= graft_capacity
+
+func equip(key: String) -> void:
+	if not is_owned(key) or is_equipped(key):
+		return
+	if used_slots() + Grafts.slot_of(key) > graft_capacity:
+		return
+	set(key, true)
+	var af := Grafts.active_flag(key)
+	if af != "":
+		set(af, true)                # beam mods come on when equipped
+	_recompute_grafts()
+
+func unequip(key: String) -> void:
+	if not is_equipped(key):
+		return
+	set(key, false)
+	var af := Grafts.active_flag(key)
+	if af != "":
+		set(af, false)
+	_recompute_grafts()
+
+func toggle_graft(key: String) -> void:
+	if is_equipped(key):
+		unequip(key)
+	elif can_equip(key):
+		equip(key)
+
+func owned_keys() -> Array:
+	return _owned.keys()
+
+func restore_grafts(owned: Array, capacity: int) -> void:
+	_owned.clear()
+	for k in owned:
+		_owned[str(k)] = true
+	graft_capacity = maxi(1, capacity)
+	_recompute_grafts()
+
+# Equipped MASS reshapes the bug: heavier = falls faster, drifts less, shrugs off
+# knockback; lighter (wings) = floatier and easily launched.
+func _recompute_grafts() -> void:
+	var w := float(total_mass())
+	_grav_mult = clampf(1.0 + w * 0.045, 0.78, 1.5)
+	_fallcap_mult = clampf(1.0 + w * 0.05, 0.78, 1.6)
+	_airspeed_mult = clampf(1.0 - w * 0.022, 0.78, 1.18)
+	_knock_mult = clampf(1.0 - w * 0.05, 0.5, 1.35)
+
 
 func _update_timers(delta: float) -> void:
 	if _hit_recent > 0.0:
@@ -260,8 +357,8 @@ func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
 		_fast_falling = false
 		return
-	var g := fall_gravity if velocity.y > 0.0 else gravity
-	var cap := fast_fall_speed if _fast_falling else max_fall_speed
+	var g := (fall_gravity if velocity.y > 0.0 else gravity) * _grav_mult
+	var cap := (fast_fall_speed if _fast_falling else max_fall_speed) * _fallcap_mult
 	velocity.y = minf(velocity.y + g * delta, cap)
 
 
@@ -273,7 +370,7 @@ func _handle_horizontal(delta: float, input_x: float) -> void:
 	var on_floor := is_on_floor()
 	var accel := run_accel if on_floor else air_accel
 	var fric := ground_friction if on_floor else air_friction
-	var top := max_run_speed if on_floor else air_max_speed   # SMASH: lower air speed
+	var top := max_run_speed if on_floor else air_max_speed * _airspeed_mult   # SMASH + mass
 	var allow_boost := true
 
 	# Super Metroid feel: for a short window after a wall jump, steering BACK toward
@@ -473,8 +570,8 @@ func take_damage(amount: int, from_pos = null) -> void:
 		var dir := signf((global_position - from_pos).x)
 		if dir == 0.0:
 			dir = -float(_facing)
-		velocity.x = dir * knockback_force
-		velocity.y = -knockback_force * 0.5
+		velocity.x = dir * knockback_force * _knock_mult
+		velocity.y = -knockback_force * 0.5 * _knock_mult
 	if health <= 0:
 		await _die()
 		return

@@ -16,6 +16,7 @@ var _revealed: Dictionary = {}
 var _hs_token: int = 0
 
 func _ready() -> void:
+	Settings.load_settings()
 	add_to_group("game")
 	layer = 50
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -126,6 +127,7 @@ func show_end(end_title: String) -> void:
 	if _complete:
 		return
 	_complete = true
+	get_tree().call_group("level", "set_boss_music", false)
 	_title.text = end_title
 	_show_resume(false)
 	_panel.visible = true
@@ -149,6 +151,7 @@ func start_escape() -> void:
 		return
 	if get_tree().get_first_node_in_group("escape") != null:
 		return
+	get_tree().call_group("level", "set_boss_music", false)
 	add_child(Escape.new())
 
 # First-time pickup flourish: dim + slow-mo + the part name + a sting.
@@ -186,6 +189,58 @@ func hitstop(duration: float) -> void:
 		Engine.time_scale = 1.0
 
 # Boss arrival card: name fades in, holds, fades out.
+func region_banner(region_name: String, subtitle: String = "", tint := Color("#9fd68a")) -> void:
+	if region_name == "":
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	# A thin slab that sweeps across, MMX stage-intro style.
+	var slab := ColorRect.new()
+	slab.color = Color(0.02, 0.03, 0.025, 0.55)
+	slab.size = Vector2(vp.x, 96)
+	slab.position = Vector2(0, vp.y * 0.40)
+	root.add_child(slab)
+	var bar := ColorRect.new()
+	bar.color = tint
+	bar.size = Vector2(vp.x, 2)
+	bar.position = Vector2(0, vp.y * 0.40)
+	root.add_child(bar)
+	var bar2 := ColorRect.new()
+	bar2.color = tint
+	bar2.size = Vector2(vp.x, 2)
+	bar2.position = Vector2(0, vp.y * 0.40 + 94)
+	root.add_child(bar2)
+	var lbl := Label.new()
+	lbl.text = region_name
+	lbl.add_theme_font_size_override("font_size", 46)
+	lbl.add_theme_color_override("font_color", tint)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(vp.x, 56)
+	lbl.position = Vector2(40, vp.y * 0.40 + 12)
+	root.add_child(lbl)
+	var sub := Label.new()
+	sub.text = subtitle
+	sub.add_theme_font_size_override("font_size", 17)
+	sub.add_theme_color_override("font_color", Color(tint.r, tint.g, tint.b, 0.7))
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.size = Vector2(vp.x, 22)
+	sub.position = Vector2(40, vp.y * 0.40 + 64)
+	root.add_child(sub)
+	root.modulate.a = 0.0
+	lbl.position.x = -40
+	sub.position.x = 80
+	var t := create_tween()
+	t.tween_property(root, "modulate:a", 1.0, 0.35)
+	t.parallel().tween_property(lbl, "position:x", 40, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(sub, "position:x", 40, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.tween_interval(1.6)
+	t.tween_property(root, "modulate:a", 0.0, 0.5)
+	t.tween_callback(root.queue_free)
+
+
 func boss_intro(boss_name: String) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	var root := Control.new()

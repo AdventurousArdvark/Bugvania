@@ -1,54 +1,87 @@
 extends Node
 class_name Music
-## Procedural 8-bit background music, synthesized at runtime — no audio files.
-## One looping exploration theme in the dark/dissonant vein: a minor key with a
-## flat-2 and tritone for unease, two pulse channels (the second detuned so it
-## beats against the first), a triangle bass walking down chromatically, a low
-## continuous drone (two detuned oscillators), and a soft heartbeat thud instead
-## of hi-hats. Routes through the Master bus, so the volume setting controls it.
-##
-## Built once on _ready (~1s of synthesis), then loops seamlessly forever.
+## Procedural 8-bit music, synthesized at runtime — no audio files. Three themes,
+## all Capcom/Mega-Man inspired, sharing one engine (a fast arpeggio channel faking
+## chords, a busy octave-jumping bass, a noise-drum groove, and a melodic hook):
+##   "explore" — driving dark-minor stage theme.
+##   "title"   — slow, ominous Mega-Man-X-intro dread, over a deep drone + tolls.
+##   "boss"    — fast, heavy, dissonant: chromatic descent and diminished arps.
+## Routes through the Master bus, so the volume setting controls it. Built once on
+## _ready, then loops seamlessly.
 
-@export var bpm: float = 76.0
 @export var volume_db: float = -11.0
 @export var autoplay: bool = true
-@export var theme: String = "explore"   # "explore" | "title"
+@export var theme: String = "explore"   # "explore" | "title" | "boss"
 
-const RATE := 16000                     # lo-fi on purpose; authentic chip grit
+const RATE := 16000
 
-# Title theme: a lilting 3/4 waltz in the spirit of a haunted music box — the
-# rising-leap-and-turn shape of that famous wizard motif, but bent toward dread
-# with a tritone (Eb) and flat-2 (Bb), played high over a deep drone and tolls.
-# [semi-from-A, eighth-note units]; -99 = rest. Groups of 6 = one 3/4 bar.
-const TITLE_LEAD := [
-	[7, 1],                       # pickup: E (the 5th)
-	[0, 3], [3, 1], [2, 2],       # A . C B   — the turn
-	[0, 2], [7, 3], [5, 1],       # A  E↑  D  — the rising leap
-	[3, 2], [2, 2], [0, 2],       # C  B  A   — fall
-	[6, 3], [2, 3],               # Eb . B    — TRITONE twist (horror)
-	[0, 3], [3, 1], [2, 2],       # A . C B
-	[0, 2], [7, 3], [8, 1],       # A  E↑  F  — minor-6th, darker turn
-	[6, 2], [5, 2], [3, 2],       # Eb D C    — chromatic descent
-	[1, 3], [0, 3],               # Bb . A    — flat-2 lean, sink home
+# --- EXPLORE: heroic-minor stage loop (i-VI-III-VII = Am F C G) ---------------
+const PROG := [
+	{"root": 0,  "arp": [0, 3, 7, 12]},
+	{"root": -4, "arp": [-4, 0, 3, 8]},
+	{"root": 3,  "arp": [3, 7, 10, 15]},
+	{"root": -2, "arp": [-2, 2, 5, 10]},
+	{"root": 0,  "arp": [0, 3, 7, 12]},
+	{"root": -4, "arp": [-4, 0, 3, 8]},
+	{"root": 3,  "arp": [3, 7, 10, 15]},
+	{"root": -2, "arp": [-2, 2, 5, 10]},
 ]
-
-# Semitone offsets from A. Dark palette: minor with Bb (flat-2) and Eb (tritone).
-# [offset, beats]; offset -99 = rest. Each bar sums to 4 beats; 8 bars = 32 beats.
+const BASS_PAT := [0, 12, 7, 0, 12, 0, 7, 5]
 const LEAD := [
-	[0, 2], [3, 1], [2, 1],            # A  C  B
-	[5, 2], [3, 1], [1, 1],            # D  C  Bb   <- flat-2 dread
-	[0, 1], [-99, 1], [7, 2],          # A  .  E
-	[6, 1], [5, 1], [3, 2],            # Eb D  C    <- tritone pull
-	[8, 2], [7, 1], [5, 1],            # F  E  D
-	[3, 2], [2, 2],                    # C  B
-	[0, 1], [3, 1], [7, 2],            # A  C  E
-	[1, 2], [0, 2],                    # Bb A       <- lean then resolve
+	[12, 4], [10, 2], [12, 2], [7, 4], [12, 3], [14, 1],
+	[15, 4], [14, 2], [12, 2], [8, 6], [-99, 2],
+	[10, 4], [12, 2], [10, 2], [7, 4], [10, 4],
+	[14, 4], [12, 2], [10, 2], [5, 6], [-99, 2],
+	[12, 2], [15, 2], [14, 2], [12, 2], [10, 2], [12, 2], [7, 4],
+	[12, 2], [15, 2], [17, 2], [15, 2], [12, 4], [8, 4],
+	[15, 2], [14, 2], [12, 2], [10, 2], [7, 4], [10, 4],
+	[14, 4], [10, 4], [5, 4], [2, 4],
 ]
-const BASS := [
-	[0, 2], [0, 2], [-2, 2], [-2, 2],  # A A  G G
-	[0, 2], [7, 2], [-4, 2], [-4, 2],  # A E  F F
-	[-1, 2], [-1, 2], [-2, 2], [-2, 2],# Ab Ab G G  <- chromatic descent
-	[0, 2], [7, 2], [1, 2], [0, 2],    # A E  Bb A
+
+# --- TITLE: ominous, slow. Am - Bb(Neapolitan) - Am - E, with F (dark color) ---
+const PROG_TITLE := [
+	{"root": 0,  "arp": [0, 3, 7, 12]},     # Am
+	{"root": 1,  "arp": [1, 5, 8, 13]},     # Bb (flat-2, dread)
+	{"root": 0,  "arp": [0, 3, 7, 12]},     # Am
+	{"root": -5, "arp": [-5, -1, 2, 7]},    # E  (G# leading tone)
+	{"root": -4, "arp": [-4, 0, 3, 8]},     # F
+	{"root": 1,  "arp": [1, 5, 8, 13]},     # Bb
+	{"root": 0,  "arp": [0, 3, 7, 12]},     # Am
+	{"root": -5, "arp": [-5, -1, 2, 7]},    # E
+]
+const TITLE_BASS_PAT := [0, 0, 12, 0, 0, 0, 7, 0]
+const TITLE_LEAD := [
+	[0, 8], [3, 4], [2, 4],                 # A C B
+	[1, 8], [5, 4], [1, 4],                 # Bb D Bb  (flat-2)
+	[0, 6], [3, 2], [7, 8],                 # A C E
+	[7, 8], [6, 4], [7, 4],                 # E Eb E   (tritone color)
+	[8, 8], [7, 4], [5, 4],                 # F E D
+	[1, 8], [5, 4], [8, 4],                 # Bb D F
+	[0, 6], [3, 2], [2, 4], [0, 4],         # A C B A
+	[7, 8], [1, 4], [0, 4],                 # E Bb A
+]
+
+# --- BOSS: relentless chromatic descent (Am Ab G Gb), diminished arps ----------
+const PROG_BOSS := [
+	{"root": 0,  "arp": [0, 3, 6, 9]},
+	{"root": -1, "arp": [-1, 2, 5, 8]},
+	{"root": -2, "arp": [-2, 1, 4, 7]},
+	{"root": -3, "arp": [-3, 0, 3, 6]},
+	{"root": 0,  "arp": [0, 3, 6, 9]},
+	{"root": -1, "arp": [-1, 2, 5, 8]},
+	{"root": -2, "arp": [-2, 1, 4, 7]},
+	{"root": -3, "arp": [-3, 0, 3, 6]},
+]
+const BOSS_BASS_PAT := [0, 12, 0, 12, 0, 7, 0, 12]
+const BOSS_LEAD := [
+	[0, 2], [3, 2], [6, 2], [3, 2], [0, 2], [6, 2], [0, 4],
+	[-1, 2], [2, 2], [5, 2], [2, 2], [-1, 4], [5, 4],
+	[-2, 2], [1, 2], [4, 2], [1, 2], [-2, 4], [4, 4],
+	[-3, 2], [0, 2], [3, 2], [0, 2], [-3, 4], [3, 4],
+	[12, 2], [9, 2], [6, 2], [9, 2], [12, 2], [15, 2], [12, 4],
+	[11, 2], [8, 2], [5, 2], [8, 2], [11, 4], [5, 4],
+	[10, 2], [7, 2], [4, 2], [7, 2], [10, 4], [4, 4],
+	[9, 2], [6, 2], [3, 2], [6, 2], [9, 4], [3, 4],
 ]
 
 var _player: AudioStreamPlayer
@@ -70,13 +103,147 @@ func stop() -> void:
 	if _player != null:
 		_player.stop()
 
-# --- synthesis ------------------------------------------------------------
+# --- builds ---------------------------------------------------------------
+
+func _build() -> AudioStreamWAV:
+	match theme:
+		"title": return _build_title()
+		"boss": return _build_boss()
+		_: return _build_explore()
+
+func _new_buf(bars: int, six: float) -> PackedFloat32Array:
+	var n := int(float(bars * 16) * six * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(n)
+	return buf
+
+func _build_explore() -> AudioStreamWAV:
+	var six := 60.0 / 150.0 / 4.0
+	var buf := _new_buf(PROG.size(), six)
+	_render_capcom(buf, buf.size(), PROG, BASS_PAT, LEAD, six, {
+		"arp_base": 440.0, "arp_div": 1, "arp_vol": 0.085,
+		"bass_base": 110.0, "bass_vol": 0.26,
+		"lead_base": 440.0, "lead_vol": 0.2, "drums": "rock"})
+	return _to_wav(buf, buf.size())
+
+func _build_title() -> AudioStreamWAV:
+	var six := 60.0 / 88.0 / 4.0
+	var buf := _new_buf(PROG_TITLE.size(), six)
+	var n := buf.size()
+	# Deep steady drone bed under the groove, for dread (whole cycles = seamless).
+	var ls := float(n) / float(RATE)
+	var dsub := roundf(27.5 * ls) / ls
+	var d1 := roundf(55.0 * ls) / ls
+	for i in n:
+		var t := float(i) / float(RATE)
+		buf[i] += (_tri(dsub * t) * 0.5 + _tri(d1 * t) * 0.5) * 0.1
+	_render_capcom(buf, n, PROG_TITLE, TITLE_BASS_PAT, TITLE_LEAD, six, {
+		"arp_base": 220.0, "arp_div": 2, "arp_vol": 0.07,
+		"bass_base": 55.0, "bass_vol": 0.24,
+		"lead_base": 220.0, "lead_vol": 0.17, "drums": "doom"})
+	var length := float(n) / float(RATE)
+	_breath(buf, n, length * 0.5 - 0.4, 1.6, 0.12)
+	_toll(buf, n, 0.1)
+	_toll(buf, n, length * 0.5)
+	return _to_wav(buf, n)
+
+func _build_boss() -> AudioStreamWAV:
+	var six := 60.0 / 172.0 / 4.0
+	var buf := _new_buf(PROG_BOSS.size(), six)
+	_render_capcom(buf, buf.size(), PROG_BOSS, BOSS_BASS_PAT, BOSS_LEAD, six, {
+		"arp_base": 440.0, "arp_div": 1, "arp_vol": 0.09,
+		"bass_base": 110.0, "bass_vol": 0.28,
+		"lead_base": 440.0, "lead_vol": 0.2, "drums": "boss"})
+	return _to_wav(buf, buf.size())
+
+# --- the shared Capcom section: arp + bass + lead + drums -----------------
+
+func _render_capcom(buf: PackedFloat32Array, n: int, prog: Array, bass_pat: Array, lead: Array, six: float, o: Dictionary) -> void:
+	var steps := 16
+	var bars := prog.size()
+	var adiv := int(o.get("arp_div", 1))
+	var abase := float(o.get("arp_base", 440.0))
+	var avol := float(o.get("arp_vol", 0.085))
+	var bbase := float(o.get("bass_base", 110.0))
+	var bvol := float(o.get("bass_vol", 0.26))
+	var lbase := float(o.get("lead_base", 440.0))
+	var lvol := float(o.get("lead_vol", 0.2))
+	var style := str(o.get("drums", "rock"))
+
+	# ARP — fast chord-outline pulses.
+	for bar in bars:
+		var tones: Array = prog[bar]["arp"]
+		var ai := 0
+		var s := 0
+		while s < steps:
+			var semi := int(tones[ai % tones.size()])
+			var at := float(bar * steps + s) * six
+			_blip_note(buf, n, at, six * float(adiv) * 0.95, _freq(abase, semi), 0.125, avol)
+			ai += 1
+			s += adiv
+
+	# BASS — octave-jumping eighths under each chord.
+	var eighth := six * 2.0
+	for bar in bars:
+		var root := int(prog[bar]["root"])
+		for e in 8:
+			var semi := root + int(bass_pat[e])
+			var at := float(bar * steps) * six + float(e) * eighth
+			_bass_note(buf, n, at, eighth * 0.92, _freq(bbase, semi), bvol)
+
+	# LEAD — the hook (16th-note timing) with an octave-down body.
+	var pos := 0.0
+	for ev in lead:
+		var semis := int(ev[0])
+		var dur := float(ev[1]) * six
+		if semis != -99:
+			var f := _freq(lbase, semis)
+			var s0 := int(pos * RATE)
+			var s1 := mini(n, int((pos + dur) * RATE))
+			for i in range(s0, s1):
+				var tt := float(i) / float(RATE)
+				var e := _env(tt - pos, dur)
+				buf[i] += _square(f * tt, 0.5) * e * lvol
+				buf[i] += _square(f * 0.5 * tt, 0.5) * e * lvol * 0.3
+		pos += dur
+
+	_render_drums(buf, n, bars, steps, six, style)
+
+func _render_drums(buf: PackedFloat32Array, n: int, bars: int, steps: int, six: float, style: String) -> void:
+	for bar in bars:
+		var b0 := float(bar * steps) * six
+		var kicks: Array
+		var snares: Array
+		var hat_step := 2
+		var hat_gain := 1.0
+		match style:
+			"doom":
+				kicks = [0, 8]
+				snares = [4, 12]
+				hat_step = 4
+				hat_gain = 0.7
+			"boss":
+				kicks = [0, 4, 8, 12, 14]
+				snares = [4, 12]
+				hat_step = 1
+			_:  # rock
+				kicks = [0, 6, 10]
+				snares = [4, 12]
+		for k in kicks:
+			_drum(buf, n, b0 + float(k) * six, "kick", 1.0)
+		for sn in snares:
+			_drum(buf, n, b0 + float(sn) * six, "snare", 1.0)
+		var h := 0
+		while h < steps:
+			_drum(buf, n, b0 + float(h) * six, "hat", hat_gain)
+			h += hat_step
+
+# --- voices & helpers -----------------------------------------------------
 
 func _freq(base: float, semis: int) -> float:
 	return base * pow(2.0, float(semis) / 12.0)
 
 func _env(tn: float, dur: float) -> float:
-	# Plucky ADSR so notes never click and the lead has chip "bite".
 	var a := 0.006
 	var d := 0.07
 	var s := 0.6
@@ -89,150 +256,47 @@ func _env(tn: float, dur: float) -> float:
 		return s
 	return s * maxf(0.0, (dur - tn) / r)
 
-func _build() -> AudioStreamWAV:
-	if theme == "title":
-		return _build_title()
-	return _build_explore()
-
-func _build_explore() -> AudioStreamWAV:
-	var beat := 60.0 / bpm
-	var total_beats := 0.0
-	for ev in LEAD:
-		total_beats += float(ev[1])
-	var length := total_beats * beat
-	var n := int(length * RATE)
-	var buf := PackedFloat32Array()
-	buf.resize(n)
-
-	# Continuous low drone: a steady root + a quiet fifth (no detuning, so it holds
-	# flat instead of wavering). Tuned to whole cycles over the loop -> seamless.
-	var ls := float(n) / float(RATE)
-	var d1 := roundf(55.0 * ls) / ls
-	var d5 := roundf(82.4 * ls) / ls         # fifth, very low
-	for i in n:
-		var t := float(i) / float(RATE)
-		var dr := _tri(d1 * t) * 0.7 + _tri(d5 * t) * 0.2
-		buf[i] += dr * 0.16
-
-	# Lead (pulse 1, duty 0.5) + detuned echo (pulse 2, thin duty 0.25).
-	_render_voice(buf, LEAD, 220.0, beat, true)
-	# Bass (triangle), low.
-	_render_voice(buf, BASS, 55.0, beat, false)
-
-	# Heartbeat: a soft low thud at the start of each bar (lub-dub), no hi-hats.
-	var bar := beat * 4.0
-	var bars := int(roundf(total_beats / 4.0))
-	for b in bars:
-		_thud(buf, b * bar, 0.0)
-		_thud(buf, b * bar + 0.34, -3.0)
-
-	return _to_wav(buf, n)
-
-func _render_voice(buf: PackedFloat32Array, pattern: Array, base: float, beat: float, is_lead: bool) -> void:
-	var n := buf.size()
-	var pos := 0.0
-	for ev in pattern:
-		var semis := int(ev[0])
-		var dur := float(ev[1]) * beat
-		if semis != -99:
-			var f := _freq(base, semis)
-			var s0 := int(pos * RATE)
-			var s1 := mini(n, int((pos + dur) * RATE))
-			for i in range(s0, s1):
-				var t := float(i) / float(RATE)
-				var tn := t - pos
-				var e := _env(tn, dur)
-				if is_lead:
-					buf[i] += _square(f * t, 0.5) * e * 0.24
-					buf[i] += _square(f * 0.5 * t, 0.5) * e * 0.09   # clean octave below for body
-				else:
-					buf[i] += _tri(f * t) * e * 0.22
-		pos += dur
-
-func _thud(buf: PackedFloat32Array, at: float, gain_db: float) -> void:
-	var n := buf.size()
-	var s0 := int(at * RATE)
-	var dur := 0.16
-	var g := db_to_linear(gain_db) * 0.5
-	for i in range(s0, mini(n, s0 + int(dur * RATE))):
-		var tn := float(i - s0) / float(RATE)
-		var decay := pow(1.0 - tn / dur, 3.0)
-		var f := 48.0 - 30.0 * (tn / dur)               # pitch drop
-		buf[i] += _tri(f * tn) * decay * g
-
-func _build_title() -> AudioStreamWAV:
-	var unit := 0.28                        # slightly slower = heavier dread
-	var total_units := 0.0
-	for ev in TITLE_LEAD:
-		total_units += float(ev[1])
-	var length := total_units * unit
-	var n := int(length * RATE)
-	var buf := PackedFloat32Array()
-	buf.resize(n)
-	var ls := float(n) / float(RATE)
-
-	# Deep drone with a low TRITONE growl (root vs Eb = a menacing roughness, not a
-	# slow wobble). Sub + root + octave + tritone. All tuned to whole cycles.
-	var dsub := roundf(27.5 * ls) / ls
-	var d1 := roundf(55.0 * ls) / ls
-	var dtri := roundf(77.78 * ls) / ls      # Eb1 — the growl
-	var d8 := roundf(110.0 * ls) / ls
-	# A faint high dissonant ring, like tinnitus held in the dark.
-	var hi := roundf(1244.5 * ls) / ls       # Eb6, a tritone above the octave
-	for i in n:
-		var t := float(i) / float(RATE)
-		var dr := _tri(dsub * t) * 0.5 + _tri(d1 * t) * 0.55 + _tri(dtri * t) * 0.22 + _tri(d8 * t) * 0.1
-		buf[i] += dr * 0.13
-		buf[i] += _tri(hi * t) * 0.028
-
-	# Music-box melody + a cursed SHADOW a tritone below it (steady, so it clashes
-	# without wavering). The pretty waltz, rung wrong.
-	var pos := 0.0
-	for ev in TITLE_LEAD:
-		var semis := int(ev[0])
-		var dur := float(ev[1]) * unit
-		if semis != -99:
-			var f := _freq(440.0, semis)
-			var fshadow := f * pow(2.0, -6.0 / 12.0)   # tritone below
-			var s0 := int(pos * RATE)
-			var s1 := mini(n, int((pos + dur) * RATE))
-			for i in range(s0, s1):
-				var tt := float(i) / float(RATE)
-				var e := _box_env(tt - pos)
-				buf[i] += _tri(f * tt) * e * 0.18                 # music-box body
-				buf[i] += _square(f * tt, 0.5) * e * 0.05         # faint chip edge
-				buf[i] += _tri(fshadow * tt) * e * 0.06           # cursed tritone shadow
-		pos += dur
-
-	# Breathing in the dark, swelling INTO each toll (inhale, then the strike).
-	_breath(buf, n, total_units * 0.5 * unit - 0.4, 1.6, 0.16)
-	_breath(buf, n, length - 0.4, 1.6, 0.16)
-	# Clangorous dissonant tolls.
-	_toll(buf, n, total_units * 0.5 * unit)
-	_toll(buf, n, 0.12)
-
-	return _to_wav(buf, n)
-
-# Lowpassed noise with a triangular swell — a slow breath/wind in the dark.
-func _breath(buf: PackedFloat32Array, n: int, center: float, dur: float, vol: float) -> void:
-	var s0 := int((center - dur * 0.5) * RATE)
-	var s1 := int((center + dur * 0.5) * RATE)
-	var mid := float(s0 + s1) * 0.5
-	var half := maxf(1.0, float(s1 - s0) * 0.5)
-	var lp := 0.0
-	for i in range(maxi(0, s0), mini(n, s1)):
-		lp = lp * 0.92 + randf_range(-1.0, 1.0) * 0.08      # muffled rumble
-		var amp := 1.0 - absf(float(i) - mid) / half
-		buf[i] += lp * clampf(amp, 0.0, 1.0) * vol
-
-# Plucky music-box envelope: near-instant attack, then a ringing exponential decay.
 func _box_env(tn: float) -> float:
 	var a := 0.004
 	if tn < a:
 		return tn / a
 	return exp(-(tn - a) * 3.2)
 
-# A deep bell-like strike (inharmonic sine partials, long exponential decay).
+func _blip_note(buf: PackedFloat32Array, n: int, at: float, dur: float, f: float, duty: float, vol: float) -> void:
+	var s0 := int(at * RATE)
+	var s1 := mini(n, int((at + dur) * RATE))
+	for i in range(maxi(0, s0), s1):
+		var tt := float(i) / float(RATE)
+		buf[i] += _square(f * tt, duty) * _box_env(tt - at) * vol
+
+func _bass_note(buf: PackedFloat32Array, n: int, at: float, dur: float, f: float, vol: float) -> void:
+	var s0 := int(at * RATE)
+	var s1 := mini(n, int((at + dur) * RATE))
+	for i in range(maxi(0, s0), s1):
+		var tt := float(i) / float(RATE)
+		buf[i] += _tri(f * tt) * _env(tt - at, dur) * vol
+
+func _drum(buf: PackedFloat32Array, n: int, at: float, kind: String, gain: float) -> void:
+	var s0 := int(at * RATE)
+	if kind == "kick":
+		var dur := 0.11
+		for i in range(maxi(0, s0), mini(n, s0 + int(dur * RATE))):
+			var tn := float(i - s0) / float(RATE)
+			var dec := pow(1.0 - tn / dur, 2.0)
+			var f := 110.0 - 70.0 * (tn / dur)
+			buf[i] += _tri(f * tn) * dec * 0.5 * gain
+	elif kind == "snare":
+		var dur := 0.12
+		for i in range(maxi(0, s0), mini(n, s0 + int(dur * RATE))):
+			var tn := float(i - s0) / float(RATE)
+			var dec := exp(-tn * 28.0)
+			buf[i] += (randf_range(-1.0, 1.0) * 0.7 + _tri(190.0 * tn) * 0.3) * dec * 0.32 * gain
+	else:  # hat
+		var dur := 0.03
+		for i in range(maxi(0, s0), mini(n, s0 + int(dur * RATE))):
+			var tn := float(i - s0) / float(RATE)
+			buf[i] += randf_range(-1.0, 1.0) * exp(-tn * 90.0) * 0.14 * gain
+
 func _toll(buf: PackedFloat32Array, n: int, at: float) -> void:
 	var base := 55.0
 	var dur := 3.6
@@ -246,15 +310,16 @@ func _toll(buf: PackedFloat32Array, n: int, at: float) -> void:
 			v += sin(TAU * base * float(p[0]) * tn) * float(p[1])
 		buf[i] += v * dec * 0.11
 
-# Slow attack/release so notes breathe like a pad (no periodic wobble).
-func _pad_env(tn: float, dur: float) -> float:
-	var a := 0.4
-	var r := 0.7
-	if tn < a:
-		return tn / a
-	if tn < dur - r:
-		return 1.0
-	return maxf(0.0, (dur - tn) / r)
+func _breath(buf: PackedFloat32Array, n: int, center: float, dur: float, vol: float) -> void:
+	var s0 := int((center - dur * 0.5) * RATE)
+	var s1 := int((center + dur * 0.5) * RATE)
+	var mid := float(s0 + s1) * 0.5
+	var half := maxf(1.0, float(s1 - s0) * 0.5)
+	var lp := 0.0
+	for i in range(maxi(0, s0), mini(n, s1)):
+		lp = lp * 0.92 + randf_range(-1.0, 1.0) * 0.08
+		var amp := 1.0 - absf(float(i) - mid) / half
+		buf[i] += lp * clampf(amp, 0.0, 1.0) * vol
 
 func _square(phase: float, duty: float) -> float:
 	return 1.0 if fposmod(phase, 1.0) < duty else -1.0
@@ -263,7 +328,6 @@ func _tri(phase: float) -> float:
 	return 4.0 * absf(fposmod(phase, 1.0) - 0.5) - 1.0
 
 func _to_wav(buf: PackedFloat32Array, n: int) -> AudioStreamWAV:
-	# Normalize to avoid clipping, then pack to 16-bit PCM.
 	var peak := 0.0001
 	for i in n:
 		peak = maxf(peak, absf(buf[i]))

@@ -53,16 +53,15 @@ func _ready() -> void:
 	layer = 40
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_font = ThemeDB.fallback_font
-	_parts = [
-		{"key": "has_charge",      "active": "charge_active", "name": "Charge Gland",      "glyph": "charge",  "desc": "Hold the trigger to overcharge one heavy lance."},
-		{"key": "has_ice",         "active": "ice_active",    "name": "Frost Gland",       "glyph": "ice",     "desc": "Shots chill prey solid. Frozen prey becomes a platform."},
-		{"key": "has_wave",        "active": "wave_active",   "name": "Resonant Membrane", "glyph": "wave",    "desc": "Shots phase through carapace and wall alike."},
-		{"key": "has_missiles",    "active": "",              "name": "Stinger Pods",      "glyph": "missile", "desc": "Volatile pods. Burst armored growths and sealed ways."},
-		{"key": "has_double_jump", "active": "",              "name": "Wing-Segment",      "glyph": "wing",    "desc": "A second beat of borrowed wings."},
-		{"key": "has_dash",        "active": "",              "name": "Drill-Limb",        "glyph": "drill",   "desc": "A lunging bore. Crosses gaps and carries momentum."},
-		{"key": "has_wall_jump",   "active": "",              "name": "Grip-Claws",        "glyph": "claw",    "desc": "Cling to walls; kick off them to climb."},
-		{"key": "has_slide",       "active": "",              "name": "Carapace-Roll",     "glyph": "roll",    "desc": "Tuck and slide low and fast."},
-	]
+	_parts = []
+	for key in Grafts.ORDER:
+		_parts.append({
+			"key": key,
+			"active": Grafts.active_flag(key),
+			"name": Grafts.name_of(key),
+			"glyph": Grafts.glyph_of(key),
+			"desc": Grafts.desc_of(key),
+		})
 	_draw_node = MenuDraw.new()
 	(_draw_node as MenuDraw).menu = self
 	_draw_node.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -173,11 +172,21 @@ func _move(d: int) -> void:
 
 func _toggle_current() -> void:
 	var part: Dictionary = _parts[_idx]
-	if _has(part.key) and part.active != "":
-		_player.set(part.active, not bool(_player.get(part.active)))
+	if _player == null:
+		return
+	var key: String = part.key
+	if not _player.is_owned(key):
+		Audio.play("hit")                 # not harvested yet
+		return
+	if _player.is_equipped(key):
+		_player.unequip(key)
+		Audio.play("hit")
+	elif _player.can_equip(key):
+		_player.equip(key)
 		Audio.play("charge_ready")
 	else:
-		Audio.play("hit")
+		Audio.play("hit")                 # no free slots
+	_redraw()
 
 func _redraw() -> void:
 	if _draw_node != null:
@@ -253,7 +262,7 @@ func _draw_tabs(c: Control) -> void:
 func _draw_footer(c: Control) -> void:
 	var hint := "Q / E  switch tabs  ·  TAB close"
 	if _tab == 0:
-		hint = "navigate  ·  ENTER suppress / restore  ·  Q / E  switch tabs  ·  TAB close"
+		hint = "navigate  ·  ENTER equip / unequip  ·  Q / E  switch tabs  ·  TAB close"
 	elif _tab == 2:
 		hint = "up / down  select  ·  left / right  adjust  ·  ENTER  activate  ·  Q / E  tabs"
 	c.draw_string(_font, Vector2(MARGIN, DESIGN.y - 40.0), hint,
@@ -349,6 +358,20 @@ func _draw_assembly(c: Control) -> void:
 	_panel(c, silh_panel, "MORPHOLOGY")
 	_panel(c, stat_panel, "STATUS")
 
+	# Build readout: slots used and the mass profile your equipped set produces.
+	if _player != null:
+		var used: int = _player.used_slots()
+		var cap: int = int(_player.get("graft_capacity"))
+		var mass: int = _player.total_mass()
+		var prof := Grafts.profile(mass)
+		var over := used > cap
+		var slot_col: Color = Color("#e0584f") if over else ACCENT
+		c.draw_string(_font, Vector2(parts_panel.position.x + parts_panel.size.x - 360.0, parts_panel.position.y + 26.0),
+			"SLOTS %d / %d" % [used, cap], HORIZONTAL_ALIGNMENT_LEFT, 160, 18, slot_col)
+		var mass_txt := "MASS %+d  ·  %s" % [mass, prof]
+		c.draw_string(_font, Vector2(parts_panel.position.x + parts_panel.size.x - 200.0, parts_panel.position.y + 26.0),
+			mass_txt, HORIZONTAL_ALIGNMENT_LEFT, 200, 18, TEXT_DIM)
+
 	# Grid centered within the parts panel interior.
 	var pad := 22.0
 	var inner := parts_panel.grow(-pad)
@@ -374,27 +397,35 @@ func _draw_assembly(c: Control) -> void:
 	_draw_status(c, stat_panel)
 
 func _draw_cell(c: Control, r: Rect2, part: Dictionary, sel: bool) -> void:
-	var acq := _has(part.key)
-	var togg: bool = part.active != ""
-	var act: bool = togg and acq and bool(_player.get(part.active))
-	var lit := acq and (not togg or act)
+	var key: String = part.key
+	var owned: bool = _player != null and _player.is_owned(key)
+	var equipped: bool = _player != null and _player.is_equipped(key)
+	var lit := equipped
 
 	var fill: Color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.22) if lit \
-		else (Color(ACCENT_DIM.r, ACCENT_DIM.g, ACCENT_DIM.b, 0.55) if acq else LOCK_FILL)
+		else (Color(ACCENT_DIM.r, ACCENT_DIM.g, ACCENT_DIM.b, 0.55) if owned else LOCK_FILL)
 	_hex(c, r, fill)
-	var edge: Color = ACCENT if lit else (ACCENT_DIM if acq else Color(0.14, 0.20, 0.16, 0.9))
+	var edge: Color = ACCENT if lit else (ACCENT_DIM if owned else Color(0.14, 0.20, 0.16, 0.9))
 	_hex_outline(c, r, edge, 2.0)
 
 	var grad := GLYPH_LIT if lit else GLYPH_DIM
 	_glyph(c, r.get_center(), part.glyph, grad, r.size.x * 0.20)
 
-	if not acq:
-		# Locked: a small bar across, reads as "dormant".
+	# Tiny mass tag bottom-right so the build tradeoff is visible at a glance.
+	if owned:
+		var m: int = Grafts.mass_of(key)
+		c.draw_string(_font, r.position + Vector2(r.size.x * 0.5, r.size.y - 14.0),
+			"%+d" % m, HORIZONTAL_ALIGNMENT_CENTER, r.size.x * 0.5 - 6.0, 13,
+			Color(TEXT_DIM.r, TEXT_DIM.g, TEXT_DIM.b, 0.8))
+
+	if not owned:
+		# Locked: a small bar across, reads as "not yet harvested".
 		c.draw_line(r.get_center() + Vector2(-r.size.x * 0.16, 0.0),
 			r.get_center() + Vector2(r.size.x * 0.16, 0.0), Color(0, 0, 0, 0.45), 2.0)
-	elif togg and not act:
-		# Suppressed: a diagonal slash.
-		c.draw_line(r.position + r.size * 0.28, r.position + r.size * 0.72, Color(0, 0, 0, 0.5), 2.5)
+	elif not equipped:
+		# Owned but not slotted: a hollow ring marker.
+		c.draw_arc(r.get_center() + Vector2(0.0, -r.size.y * 0.04), r.size.x * 0.06, 0.0, TAU, 16,
+			Color(ACCENT_DIM.r, ACCENT_DIM.g, ACCENT_DIM.b, 0.9), 1.5)
 
 	if sel:
 		var a := 0.55 + 0.45 * sin(_anim * 6.0)
@@ -402,26 +433,23 @@ func _draw_cell(c: Control, r: Rect2, part: Dictionary, sel: bool) -> void:
 
 func _draw_description(c: Control, panel: Rect2) -> void:
 	var part: Dictionary = _parts[_idx]
-	var acq := _has(part.key)
-	var togg: bool = part.active != ""
+	var key: String = part.key
+	var owned: bool = _player != null and _player.is_owned(key)
+	var equipped: bool = _player != null and _player.is_equipped(key)
+	var acq := owned
 	var status := ""
 	var scol := TEXT_DIM
-	if not acq:
-		status = "DORMANT — not yet assembled"
+	if not owned:
+		status = "UNHARVESTED — kill its bearer to take it"
 		scol = Color("#9a6a6a")
-	elif part.key == "has_missiles":
-		status = "ASSEMBLED — %d pods" % int(_player.get("missiles"))
+	elif equipped:
+		status = "GRAFTED  ·  slot %d  ·  mass %+d" % [Grafts.slot_of(key), Grafts.mass_of(key)]
+		if key == "has_missiles":
+			status = "GRAFTED  ·  %d pods" % int(_player.get("missiles"))
 		scol = ACCENT
-	elif togg:
-		if bool(_player.get(part.active)):
-			status = "ACTIVE"
-			scol = ACCENT
-		else:
-			status = "SUPPRESSED"
-			scol = TEXT_MUTE
 	else:
-		status = "ASSEMBLED"
-		scol = ACCENT
+		status = "HARVESTED — not slotted  (slot %d · mass %+d)" % [Grafts.slot_of(key), Grafts.mass_of(key)]
+		scol = TEXT_MUTE
 
 	var p := panel.position + Vector2(22.0, 0.0)
 	var w := panel.size.x - 44.0

@@ -55,7 +55,10 @@ func _process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if not (body is CharacterBody2D):
 		return
-	body.set(ability, true)        # flip the flat flag
+	if body.has_method("harvest"):
+		body.harvest(ability)      # owned + auto-equipped if slots allow
+	else:
+		body.set(ability, true)    # fallback: flip the flat flag
 	if amount_property != "":      # optional: also top up a counter (e.g. missiles)
 		var cur = body.get(amount_property)
 		body.set(amount_property, (int(cur) if cur != null else 0) + grant_amount)

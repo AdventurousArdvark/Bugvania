@@ -36,6 +36,21 @@ var _entries: Dictionary = {}            # name -> Vector2 (checkpoint/spawn)
 var _player: Node = null
 var _cam: Camera2D = null
 var _current_room: String = ""
+var _current_region: String = ""
+var _music: Music = null
+var _boss_music: Music = null
+
+# Swap between the stage theme and the boss theme. Both buffers are pre-built at
+# load, so the switch is instant (no synth hitch mid-fight).
+func set_boss_music(on: bool) -> void:
+	if _music == null or _boss_music == null:
+		return
+	if on:
+		_music.stop()
+		_boss_music.play()
+	else:
+		_boss_music.stop()
+		_music.play()
 var _visited: Dictionary = {}            # room names the player has entered
 var _checkpoint: Vector2 = Vector2.ZERO
 var _world_bottom: float = 0.0
@@ -49,7 +64,12 @@ func _ready() -> void:
 	add_to_group("level")
 	add_child(Game.new())          # pause/restart/complete + procedural audio
 	add_child(Ambiance.new())      # tint + spores + drips
-	add_child(Music.new())         # looping dark-chiptune background theme
+	_music = Music.new()           # driving Capcom stage theme
+	add_child(_music)
+	_boss_music = Music.new()      # heavier, dissonant boss theme — paused until a fight
+	_boss_music.theme = "boss"
+	_boss_music.autoplay = false
+	add_child(_boss_music)
 	_build_room_a()
 	_build_room_b()
 	_build_room_c()
@@ -258,7 +278,11 @@ func begin_surface() -> void:
 		(_player as CharacterBody2D).velocity = Vector2.ZERO
 	_player.set("health", int(_player.get("max_health")))   # full heal for the finale
 	_current_room = ""
+	_current_region = "surface"
 	_enter_room("SKY")
+	get_tree().call_group("ambiance", "set_tint", Color(0.65, 0.78, 0.95, 0.06))
+	get_tree().call_group("game", "region_banner", "THE OPEN SKY", "daybreak breaks the hive", Color(0.78, 0.86, 0.98))
+	set_boss_music(true)
 	var sb := SkyBoss.new()
 	add_child(sb)
 	sb.global_position = Vector2((SKY_X0_T + SKY_X1_T) * 0.5 * T, SKY_FLOOR_T * T - sb.size.y * 0.5)
@@ -306,7 +330,18 @@ func _enter_room(room_name: String) -> void:
 	_current_room = room_name
 	_visited[room_name] = true
 	_apply_camera_limits(_rooms[room_name])
-	get_tree().call_group("ambiance", "set_tint", _room_tint(room_name))
+	# Region awareness: crossing into a new region announces itself (MMX-style) and
+	# recolors the air. The whole hive reads as one region for now; as the spine's
+	# other regions are built, their rooms just get tagged in _region_of.
+	var rid := _region_of(room_name)
+	if rid != "" and rid != _current_region:
+		_current_region = rid
+		var rtint := Regions.tint_of(rid)
+		get_tree().call_group("ambiance", "set_tint", rtint)
+		var banner_col := Color(0.62, 0.84, 0.54)
+		get_tree().call_group("game", "region_banner", Regions.name_of(rid), Regions.sub_of(rid), banner_col)
+	else:
+		get_tree().call_group("ambiance", "set_tint", _room_tint(room_name))
 	if not first:
 		get_tree().call_group("game", "room_fade")
 	if knocked:
@@ -315,10 +350,21 @@ func _enter_room(room_name: String) -> void:
 	get_tree().call_group("escape", "room_entered", room_name)
 	if room_name == "G":
 		get_tree().call_group("boss", "engage")   # wake the boss + show its bar
+		set_boss_music(true)
 	elif room_name != "SKY":
 		get_tree().call_group("boss", "disengage") # left the hive arena: boss stands down
+		set_boss_music(false)
 	if not first and room_name != "SKY":
 		save_progress()                             # autosave at each hive room (checkpoint)
+
+
+# Which spine region a room belongs to. The current hand-built world is the
+# finale region (the Brood Heart). As the earlier spine regions get built, their
+# rooms are added to this map — that's the whole per-region wiring cost.
+func _region_of(room_name: String) -> String:
+	match room_name:
+		"A", "B", "C", "D", "E", "F", "G": return "brood"
+		_: return ""    # SKY announces itself in begin_surface
 
 
 # Faint per-area color so rooms feel like distinct places.
@@ -417,6 +463,8 @@ func save_progress() -> void:
 		ab[k] = bool(_player.get(k))
 	SaveSystem.save({
 		"abilities": ab,
+		"owned": _player.owned_keys() if _player.has_method("owned_keys") else [],
+		"graft_capacity": int(_player.get("graft_capacity")),
 		"charge_active": bool(_player.get("charge_active")),
 		"ice_active": bool(_player.get("ice_active")),
 		"wave_active": bool(_player.get("wave_active")),
@@ -437,6 +485,10 @@ func _apply_abilities(data: Dictionary) -> void:
 	_player.set("ice_active", bool(data.get("ice_active", true)))
 	_player.set("wave_active", bool(data.get("wave_active", true)))
 	_player.set("missiles", int(data.get("missiles", 0)))
+	if _player.has_method("restore_grafts"):
+		var owned: Variant = data.get("owned", [])
+		var cap := int(data.get("graft_capacity", 4))
+		_player.restore_grafts(owned if owned is Array else [], cap)
 
 
 func _find_camera(n: Node) -> Camera2D:
