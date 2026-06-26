@@ -28,18 +28,21 @@ extends CharacterBody2D
 
 # --- Run ---
 @export var max_run_speed := 240.0
+@export var air_max_speed := 200.0      # SMASH: lower active air speed -> you drift, not dart
 @export var run_accel := 2600.0        # snappy ramp; lower for more weight
 @export var ground_friction := 1800.0  # moderate: you still slide a little on release
-@export var air_accel := 1800.0
-@export var air_friction := 700.0
+@export var air_accel := 1500.0         # SMASH: gentle air steering
+@export var air_friction := 360.0       # SMASH: low drag -> momentum carries through the air
 @export var turn_boost := 2.4          # accel multiplier when reversing direction
 
 # --- Jump ---
 @export var jump_velocity := -430.0
+@export var short_hop_velocity := -270.0   # SMASH: tap = short hop, hold = full hop
 @export var jump_cut_multiplier := 0.45
 @export var gravity := 1300.0
 @export var fall_gravity := 1700.0     # heavier going down = weighty arc
 @export var max_fall_speed := 720.0
+@export var fast_fall_speed := 1080.0  # SMASH: tap down while falling to drop fast
 @export var coyote_time := 0.10
 @export var jump_buffer_time := 0.10
 
@@ -112,6 +115,7 @@ var _wall_jump_steer := 0.0
 var _wall_jump_dir := 0.0     # +1 = launched rightward (off a left wall), -1 = left
 var _air_dash_used := false
 var _double_jump_used := false
+var _fast_falling := false
 var _is_sliding := false
 var _is_wall_sliding := false
 var _facing := 1
@@ -235,8 +239,16 @@ func _process_normal(delta: float, input_x: float) -> void:
 	_handle_horizontal(delta, input_x)
 	_handle_wall()
 
-	if Input.is_action_just_released("jump") and velocity.y < 0.0:
-		velocity.y *= jump_cut_multiplier
+	# SMASH short hop: release jump while still rising hard -> snap down to the
+	# short-hop height. Hold past that and you get the full jump. Two clean heights.
+	if Input.is_action_just_released("jump") and velocity.y < short_hop_velocity:
+		velocity.y = short_hop_velocity
+
+	# SMASH fast-fall: tap down past the apex to commit to a faster descent.
+	if not is_on_floor() and velocity.y > 0.0 and not _fast_falling \
+			and Input.get_axis("move_up", "move_down") > 0.5:
+		_fast_falling = true
+		velocity.y = maxf(velocity.y, fast_fall_speed)
 
 	_try_jump()
 	_try_dash()
@@ -246,9 +258,11 @@ func _process_normal(delta: float, input_x: float) -> void:
 
 func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
+		_fast_falling = false
 		return
 	var g := fall_gravity if velocity.y > 0.0 else gravity
-	velocity.y = minf(velocity.y + g * delta, max_fall_speed)
+	var cap := fast_fall_speed if _fast_falling else max_fall_speed
+	velocity.y = minf(velocity.y + g * delta, cap)
 
 
 func _handle_horizontal(delta: float, input_x: float) -> void:
@@ -259,6 +273,7 @@ func _handle_horizontal(delta: float, input_x: float) -> void:
 	var on_floor := is_on_floor()
 	var accel := run_accel if on_floor else air_accel
 	var fric := ground_friction if on_floor else air_friction
+	var top := max_run_speed if on_floor else air_max_speed   # SMASH: lower air speed
 	var allow_boost := true
 
 	# Super Metroid feel: for a short window after a wall jump, steering BACK toward
@@ -272,7 +287,7 @@ func _handle_horizontal(delta: float, input_x: float) -> void:
 		# Reversing direction -> stronger accel so quick changes feel instant.
 		if allow_boost and signf(input_x) != signf(velocity.x) and velocity.x != 0.0:
 			accel *= turn_boost
-		velocity.x = move_toward(velocity.x, input_x * max_run_speed, accel * delta)
+		velocity.x = move_toward(velocity.x, input_x * top, accel * delta)
 	else:
 		# >>> MOMENTUM: friction only bleeds speed when you let go; never snaps to 0.
 		velocity.x = move_toward(velocity.x, 0.0, fric * delta)
@@ -328,6 +343,7 @@ func _try_jump() -> void:
 	if has_double_jump and not _double_jump_used:
 		velocity.y = jump_velocity
 		_double_jump_used = true
+		_fast_falling = false                     # SMASH: double jump resets the dive
 		_jump_buffer = 0.0
 		Audio.play("double_jump")
 
