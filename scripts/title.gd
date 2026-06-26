@@ -75,11 +75,10 @@ func _ready() -> void:
 	_setup_audio()
 
 func _setup_audio() -> void:
-	_drone = AudioStreamPlayer.new()
-	add_child(_drone)
-	_drone.stream = _make_drone()
-	_drone.volume_db = -14.0
-	_drone.play()
+	var m := Music.new()
+	m.theme = "title"
+	m.volume_db = -13.0
+	add_child(m)
 	_blip = AudioStreamPlayer.new()
 	add_child(_blip)
 

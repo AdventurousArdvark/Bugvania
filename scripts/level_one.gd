@@ -49,6 +49,7 @@ func _ready() -> void:
 	add_to_group("level")
 	add_child(Game.new())          # pause/restart/complete + procedural audio
 	add_child(Ambiance.new())      # tint + spores + drips
+	add_child(Music.new())         # looping dark-chiptune background theme
 	_build_room_a()
 	_build_room_b()
 	_build_room_c()
