@@ -11,7 +11,7 @@ class_name TitleScreen
 
 @export var title_text: String = "INSTAR"          # working title (entomology: a stage between molts)
 @export var subtitle_text: String = "assemble · molt · become"
-@export var level_scene_path: String = "res://scenes/level_one.tscn"
+@export var level_scene_path: String = "res://scenes/world.tscn"
 
 const BG        := Color("#0a0f0c")
 const BG_DEEP   := Color("#050806")
