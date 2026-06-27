@@ -201,7 +201,10 @@ func _spawn_player() -> void:
 		_cam = _find_camera(_player)
 		if _player.has_signal("died"):
 			_player.died.connect(_respawn)
-		_apply_abilities(data)
+		if data.is_empty():
+			_new_game_loadout()
+		else:
+			_apply_abilities(data)
 	else:
 		label(spawn + Vector2(-3.0 * T, -2.0 * T), "▶ set player_scene to spawn here")
 	if _cam != null:
@@ -222,6 +225,21 @@ func _spawn_player() -> void:
 		menu.bind(_player)
 		menu.set_map_source(self)
 
+func _new_game_loadout() -> void:
+	# A captured specimen with none of the planet's parts yet — only its own slip.
+	if _player == null:
+		return
+	_player.set("has_slide", true)
+	for k in ["has_wall_jump", "has_dash", "has_double_jump",
+			"has_charge", "has_ice", "has_wave", "has_missiles"]:
+		_player.set(k, false)
+	_player.set("charge_active", false)
+	_player.set("ice_active", false)
+	_player.set("wave_active", false)
+	_player.set("missiles", 0)
+	if _player.has_method("restore_grafts"):
+		_player.restore_grafts(["has_slide"], 4)
+
 func _apply_abilities(data: Dictionary) -> void:
 	if _player == null or data.is_empty():
 		return
@@ -238,6 +256,8 @@ func _apply_abilities(data: Dictionary) -> void:
 		var cap := int(data.get("graft_capacity", 4))
 		_player.restore_grafts(owned if owned is Array else [], cap)
 	Codex.load_array(data.get("logs", []))
+	if _player.has_method("restore_fragments"):
+		_player.restore_fragments(data.get("fragments", []))
 
 func save_progress() -> void:
 	if _player == null:
@@ -261,6 +281,7 @@ func save_progress() -> void:
 		"checkpoint": [_checkpoint.x, _checkpoint.y],
 		"visited": vis,
 		"logs": Codex.to_array(),
+		"fragments": _player.fragment_ids() if _player.has_method("fragment_ids") else [],
 	})
 
 func _respawn() -> void:

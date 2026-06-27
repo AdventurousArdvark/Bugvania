@@ -131,6 +131,14 @@ func _render(c: Control) -> void:
 			var ax := x0 + i * 14.0
 			c.draw_circle(Vector2(ax + 5.0, ay + 6.0), 5.0, POD_ON if i < _missiles else POD_OFF)
 
+	# Ship-fragment salvage tally, top-right — your reason to explore.
+	if _player != null and _player.has_method("fragment_count"):
+		var got := int(_player.fragment_count())
+		if got > 0:
+			var txt := "SHIP FRAGMENTS  %d / 5" % got
+			c.draw_string(_font, Vector2(c.size.x - 230.0, 28.0), txt,
+				HORIZONTAL_ALIGNMENT_RIGHT, 214.0, 14, Color("#9fe6ff"))
+
 	# Boss bar at the BOTTOM center, clear of the top-left chitin plates.
 	if _boss_show:
 		var vw := c.size.x

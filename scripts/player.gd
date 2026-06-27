@@ -128,6 +128,10 @@ var _fallcap_mult: float = 1.0
 var _airspeed_mult: float = 1.0
 var _knock_mult: float = 1.0
 var _is_sliding := false
+var _slide_shrunk := false
+var _slide_orig_h: float = 0.0
+var _slide_orig_pos: Vector2 = Vector2.ZERO
+var _fragments: Dictionary = {}      # ship-part id -> true
 var _is_wall_sliding := false
 var _facing := 1
 var _iframes := 0.0
@@ -294,6 +298,29 @@ func toggle_graft(key: String) -> void:
 
 func owned_keys() -> Array:
 	return _owned.keys()
+
+# --- ship fragments (salvage) ---------------------------------------------
+
+func collect_fragment(id: String) -> bool:
+	if _fragments.has(id):
+		return false
+	_fragments[id] = true
+	return true
+
+func has_fragment(id: String) -> bool:
+	return _fragments.has(id)
+
+func fragment_count() -> int:
+	return _fragments.size()
+
+func fragment_ids() -> Array:
+	return _fragments.keys()
+
+func restore_fragments(ids: Variant) -> void:
+	_fragments.clear()
+	if ids is Array:
+		for i in ids:
+			_fragments[str(i)] = true
 
 func restore_grafts(owned: Array, capacity: int) -> void:
 	_owned.clear()
@@ -527,8 +554,40 @@ func _try_slide() -> void:
 	if Input.is_action_just_pressed("slide") and absf(velocity.x) > slide_min_speed:
 		_is_sliding = true
 		velocity.x = _facing * slide_speed
-		# $StandShape.disabled = true
-		# $SlideShape.disabled = false
+		_set_slide_shape(true)
+
+
+func _set_slide_shape(on: bool) -> void:
+	# Best-effort morph-squeeze: shrink the player's collision height while sliding so
+	# a low gap is passable only mid-slide. Works for a Capsule or Rectangle shape.
+	var cs: CollisionShape2D = null
+	for c in get_children():
+		if c is CollisionShape2D:
+			cs = c
+			break
+	if cs == null or cs.shape == null:
+		return
+	var shp := cs.shape
+	if on and not _slide_shrunk:
+		_slide_orig_pos = cs.position
+		if shp is CapsuleShape2D:
+			_slide_orig_h = (shp as CapsuleShape2D).height
+			var nh: float = maxf((shp as CapsuleShape2D).radius * 2.0, _slide_orig_h * 0.5)
+			(shp as CapsuleShape2D).height = nh
+			cs.position = _slide_orig_pos + Vector2(0.0, (_slide_orig_h - nh) * 0.5)
+		elif shp is RectangleShape2D:
+			_slide_orig_h = (shp as RectangleShape2D).size.y
+			var nh2: float = _slide_orig_h * 0.5
+			(shp as RectangleShape2D).size.y = nh2
+			cs.position = _slide_orig_pos + Vector2(0.0, (_slide_orig_h - nh2) * 0.5)
+		_slide_shrunk = true
+	elif not on and _slide_shrunk:
+		if shp is CapsuleShape2D:
+			(shp as CapsuleShape2D).height = _slide_orig_h
+		elif shp is RectangleShape2D:
+			(shp as RectangleShape2D).size.y = _slide_orig_h
+		cs.position = _slide_orig_pos
+		_slide_shrunk = false
 
 
 func _process_slide(delta: float) -> void:
@@ -537,8 +596,7 @@ func _process_slide(delta: float) -> void:
 	_try_jump()
 	if absf(velocity.x) < slide_min_speed or not is_on_floor() or Input.is_action_just_released("slide"):
 		_is_sliding = false
-		# $StandShape.disabled = false
-		# $SlideShape.disabled = true
+		_set_slide_shape(false)
 
 
 func _post_move() -> void:

@@ -20,6 +20,15 @@ static func build(w: World) -> void:
 	f.global_position = Vector2(150.0 * T, fl - 5.0 * T)
 	f.set("room_bounds", w._rooms["W1"].grow(-T))
 	w.label(Vector2(138.0 * T, fl - 9.0 * T), "THE GLIMMER")
+	# FRAGMENT III — high ledge, reachable only with double-jump (the Lantern's gift).
+	w.slab(155.0 * T, 159.0 * T, fl - 5.0 * T, fl - 4.0 * T, F)
+	var fc := ShipPart.new()
+	fc.fragment_id = "frag_glimmer_high"
+	fc.display_name = "RESONANCE COIL"
+	fc.required = "has_double_jump"
+	fc.position = Vector2(157.0 * T, fl - 5.6 * T)
+	w.add_child(fc)
+	w.label(Vector2(154.0 * T, fl - 6.1 * T), "double-jump ▲", 10)
 
 	# W2 — THE LANTERNS (apex arena; seals until THE LANTERN-MOTHER falls)
 	w.register_room("W2", Rect2(162.0 * T, fl - 12.0 * T, 32.0 * T, 14.0 * T), Vector2(163.0 * T, fl - T), "glimmerwet")

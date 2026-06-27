@@ -16,6 +16,26 @@ static func build(w: World) -> void:
 	w.slab(38.0 * T, 62.0 * T, 0.0, 2.0 * T, F)
 	w.slab(46.0 * T, 48.0 * T, -2.0 * T, -1.0 * T, F)
 	w.label(Vector2(40.0 * T, -8.0 * T), "THE MAW")
+	# FRAGMENT II — up a grip slot: needs wall-grip (the Burrower's gift, this region).
+	w.slab(56.0 * T, 57.0 * T, -9.0 * T, 0.0, Wc)         # slot wall
+	w.slab(60.0 * T, 61.0 * T, -9.0 * T, -5.0 * T, Wc)    # opposite slot wall (climb between)
+	w.slab(56.0 * T, 61.0 * T, -9.0 * T, -8.0 * T, F)     # alcove ceiling/ledge at top
+	var fb := ShipPart.new()
+	fb.fragment_id = "frag_maw_grip"
+	fb.display_name = "STABILIZER FIN"
+	fb.required = "has_wall_jump"
+	fb.position = Vector2(58.5 * T, -8.6 * T)
+	w.add_child(fb)
+	w.label(Vector2(56.0 * T, -4.0 * T), "grip ▲", 10)
+	# FRAGMENT V — a high ledge needing double-jump (backtrack here from Glimmerwet).
+	w.slab(42.0 * T, 45.0 * T, -5.5 * T, -4.5 * T, F)     # ledge ~4.5T up
+	var fe := ShipPart.new()
+	fe.fragment_id = "frag_maw_high"
+	fe.display_name = "COOLANT CELL"
+	fe.required = "has_double_jump"
+	fe.position = Vector2(43.5 * T, -6.1 * T)
+	w.add_child(fe)
+	w.label(Vector2(42.0 * T, -6.6 * T), "double-jump ▲", 10)
 
 	# H2 — THE GULLET (first combat: patroller, flyer, a spike strip)
 	w.register_room("H2", Rect2(62.0 * T, -10.0 * T, 26.0 * T, 12.0 * T), Vector2(63.0 * T, -T), "hollow")
@@ -37,6 +57,19 @@ static func build(w: World) -> void:
 	f.global_position = Vector2(82.0 * T, -6.0 * T)
 	f.set("room_bounds", w._rooms["H2"].grow(-T))
 	w.label(Vector2(63.0 * T, -9.0 * T), "THE GULLET")
+	# FRAGMENT IV — sealed behind a wall only MISSILES break (a later found ability).
+	var bw := BreakableWall.new()
+	bw.block = Vector2(T, 3.0 * T)
+	bw.requires_missile = true
+	bw.position = Vector2(85.0 * T, -1.5 * T)
+	w.add_child(bw)
+	var fd := ShipPart.new()
+	fd.fragment_id = "frag_gullet_seal"
+	fd.display_name = "IGNITION CORE"
+	fd.required = "has_missiles"
+	fd.position = Vector2(86.5 * T, -T)
+	w.add_child(fd)
+	w.label(Vector2(83.0 * T, -4.0 * T), "missiles ▸", 10)
 
 	# H3 — THE CRAW (apex arena; seals until THE BURROWER falls)
 	w.register_room("H3", Rect2(88.0 * T, -11.0 * T, 32.0 * T, 13.0 * T), Vector2(89.0 * T, -T), "hollow")
