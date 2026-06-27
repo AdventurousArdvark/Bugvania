@@ -149,7 +149,7 @@ func _enter_room(room_name: String) -> void:
 
 func _region_info(id: String) -> Dictionary:
 	if id == "intro":
-		return {"name": "THE HUSK", "sub": "something is waking", "tint": Color(0.12, 0.13, 0.14, 0.12)}
+		return {"name": "CONTAINMENT", "sub": "specimen seven is awake", "tint": Color(0.18, 0.22, 0.27, 0.12)}
 	var r := Regions.by_id(id)
 	if not r.is_empty():
 		return {"name": r.get("name", ""), "sub": r.get("sub", ""), "tint": r.get("tint", Color(0.3, 0.3, 0.3, 0.1))}
@@ -237,6 +237,7 @@ func _apply_abilities(data: Dictionary) -> void:
 		var owned: Variant = data.get("owned", [])
 		var cap := int(data.get("graft_capacity", 4))
 		_player.restore_grafts(owned if owned is Array else [], cap)
+	Codex.load_array(data.get("logs", []))
 
 func save_progress() -> void:
 	if _player == null:
@@ -259,6 +260,7 @@ func save_progress() -> void:
 		"current_room": _current_room,
 		"checkpoint": [_checkpoint.x, _checkpoint.y],
 		"visited": vis,
+		"logs": Codex.to_array(),
 	})
 
 func _respawn() -> void:
