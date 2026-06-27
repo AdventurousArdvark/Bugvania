@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://ce5j3auecm2r1"]
+
+[ext_resource type="Script" uid="uid://s405cqv2lwxs" path="res://scripts/region_hollow.gd" id="1_t0y4m"]
+[ext_resource type="PackedScene" uid="uid://b53yyv65aj01g" path="res://scenes/player.tscn" id="2_xls13"]
+
+[node name="Node2D" type="Node2D" unique_id=1143518240]
+script = ExtResource("1_t0y4m")
+player_scene = ExtResource("2_xls13")
