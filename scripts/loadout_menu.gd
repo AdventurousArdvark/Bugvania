@@ -37,7 +37,8 @@ var _parts: Array = []
 var _cell_rects: Array = []          # design-space Rect2 per part cell
 var _tab_rects: Array = []           # design-space Rect2 per tab header
 var _map_source = null
-var _tab: int = 0                    # 0 = ASSEMBLY, 1 = MAP, 2 = SETTINGS
+var _tab: int = 0                    # 0 = ASSEMBLY, 1 = MAP, 2 = SETTINGS, 3 = CODEX
+var _codex_idx: int = 0
 var _set_idx: int = 0                # selected settings row
 var _ui_scale: float = 1.0           # design -> screen scale (set each render)
 var _ui_off: Vector2 = Vector2.ZERO  # design -> screen offset (set each render)
@@ -103,14 +104,14 @@ func _input(event: InputEvent) -> void:
 	# Tab switching: Q/E cycle, or gamepad shoulders.
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_Q:
-			_set_tab(wrapi(_tab - 1, 0, 3)); return
+			_set_tab(wrapi(_tab - 1, 0, 4)); return
 		elif event.keycode == KEY_E:
-			_set_tab(wrapi(_tab + 1, 0, 3)); return
+			_set_tab(wrapi(_tab + 1, 0, 4)); return
 	if event is InputEventJoypadButton and event.pressed:
 		if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
-			_set_tab(wrapi(_tab - 1, 0, 3)); return
+			_set_tab(wrapi(_tab - 1, 0, 4)); return
 		elif event.button_index == JOY_BUTTON_RIGHT_SHOULDER:
-			_set_tab(wrapi(_tab + 1, 0, 3)); return
+			_set_tab(wrapi(_tab + 1, 0, 4)); return
 	# Mouse: header click switches tabs; otherwise act on the current tab.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var dm := _to_design(_draw_node.get_global_mouse_position())
@@ -145,6 +146,12 @@ func _input(event: InputEvent) -> void:
 			_settings_adjust(1)
 		elif event.is_action_pressed("ui_accept"):
 			_settings_activate()
+	elif _tab == 3:
+		var n := Codex.count()
+		if n > 0 and event.is_action_pressed("ui_up"):
+			_codex_idx = wrapi(_codex_idx - 1, 0, n); _redraw()
+		elif n > 0 and event.is_action_pressed("ui_down"):
+			_codex_idx = wrapi(_codex_idx + 1, 0, n); _redraw()
 
 func _set_tab(t: int) -> void:
 	if t == _tab:
@@ -215,8 +222,10 @@ func _render(c: Control) -> void:
 		_draw_assembly(c)
 	elif _tab == 1:
 		_draw_map(c)
-	else:
+	elif _tab == 2:
 		_draw_settings(c)
+	else:
+		_draw_codex(c)
 	_draw_footer(c)
 
 	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -229,7 +238,7 @@ func _draw_frame(c: Control) -> void:
 
 func _draw_tabs(c: Control) -> void:
 	_tab_rects.clear()
-	var labels := ["ASSEMBLY", "MAP", "SETTINGS"]
+	var labels := ["ASSEMBLY", "MAP", "SETTINGS", "CODEX"]
 	var fs := 24
 	var pad := 30.0
 	var gap := 14.0
@@ -265,6 +274,8 @@ func _draw_footer(c: Control) -> void:
 		hint = "navigate  ·  ENTER equip / unequip  ·  Q / E  switch tabs  ·  TAB close"
 	elif _tab == 2:
 		hint = "up / down  select  ·  left / right  adjust  ·  ENTER  activate  ·  Q / E  tabs"
+	elif _tab == 3:
+		hint = "up / down  browse recovered logs  ·  Q / E  switch tabs  ·  TAB close"
 	c.draw_string(_font, Vector2(MARGIN, DESIGN.y - 40.0), hint,
 		HORIZONTAL_ALIGNMENT_CENTER, DESIGN.x - MARGIN * 2.0, 14, TEXT_MUTE)
 
@@ -590,6 +601,47 @@ func _draw_map(c: Control) -> void:
 	c.draw_string(_font, Vector2(lx + 98.0, ly), "current", HORIZONTAL_ALIGNMENT_LEFT, 110, 14, TEXT_DIM)
 	c.draw_rect(Rect2(lx + 192.0, ly - 13.0, 13.0, 13.0), ACCENT_DIM, false, 2.0)
 	c.draw_string(_font, Vector2(lx + 212.0, ly), "explored", HORIZONTAL_ALIGNMENT_LEFT, 110, 14, TEXT_DIM)
+
+# ---- CODEX tab -----------------------------------------------------------
+
+func _draw_codex(c: Control) -> void:
+	var top := 140.0
+	var h := DESIGN.y - top - 96.0
+	var list := Rect2(MARGIN, top, 360.0, h)
+	var read := Rect2(MARGIN + 380.0, top, DESIGN.x - MARGIN * 2.0 - 380.0, h)
+	var logs := Codex.all()
+	_panel(c, list, "RECOVERED  %d" % logs.size())
+	_panel(c, read, "")
+
+	if logs.is_empty():
+		c.draw_string(_font, list.position + Vector2(20.0, 70.0),
+			"no data recovered.", HORIZONTAL_ALIGNMENT_LEFT, list.size.x - 40.0, 16, TEXT_MUTE)
+		c.draw_string(_font, read.position + Vector2(24.0, 80.0),
+			"Logs you find in the world are stored here.", HORIZONTAL_ALIGNMENT_LEFT,
+			read.size.x - 48.0, 16, TEXT_MUTE)
+		return
+
+	_codex_idx = clampi(_codex_idx, 0, logs.size() - 1)
+	var ly := list.position.y + 56.0
+	for i in logs.size():
+		var sel: bool = i == _codex_idx
+		var row := Rect2(list.position.x + 10.0, ly - 18.0, list.size.x - 20.0, 28.0)
+		if sel:
+			c.draw_rect(row, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.16))
+			c.draw_rect(Rect2(row.position, Vector2(3.0, row.size.y)), ACCENT)
+		var col: Color = SELECT if sel else TEXT_DIM
+		c.draw_string(_font, Vector2(list.position.x + 22.0, ly),
+			str(logs[i]["title"]), HORIZONTAL_ALIGNMENT_LEFT, list.size.x - 40.0, 15, col)
+		ly += 30.0
+
+	var e: Dictionary = logs[_codex_idx]
+	c.draw_string(_font, read.position + Vector2(24.0, 40.0), "▌ RECOVERED DATA",
+		HORIZONTAL_ALIGNMENT_LEFT, read.size.x - 48.0, 13, TEXT_MUTE)
+	c.draw_string(_font, read.position + Vector2(24.0, 70.0), str(e["title"]),
+		HORIZONTAL_ALIGNMENT_LEFT, read.size.x - 48.0, 22, ACCENT)
+	c.draw_multiline_string(_font, read.position + Vector2(24.0, 108.0), str(e["body"]),
+		HORIZONTAL_ALIGNMENT_LEFT, read.size.x - 48.0, 16, -1, TEXT)
+
 
 # ---- shared drawing helpers ----------------------------------------------
 
