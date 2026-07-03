@@ -40,6 +40,22 @@ static func clear(slot: int = -1) -> void:
 		DirAccess.remove_absolute(_path(slot))
 
 # A one-line description of a slot for the profile menu.
+static func summary_data(slot: int) -> Dictionary:
+	var d := load_data(slot)
+	if d.is_empty():
+		return {"empty": true, "grafts": 0, "fragments": 0, "room": "—"}
+	var grafts := 0
+	var ab: Variant = d.get("abilities", {})
+	if ab is Dictionary:
+		for k in ab:
+			if bool(ab[k]):
+				grafts += 1
+	var frags := 0
+	var fr: Variant = d.get("fragments", [])
+	if fr is Array:
+		frags = (fr as Array).size()
+	return {"empty": false, "grafts": grafts, "fragments": frags, "room": str(d.get("current_room", "?"))}
+
 static func summary(slot: int) -> String:
 	if not has_save(slot):
 		return "— empty —"

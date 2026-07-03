@@ -118,6 +118,26 @@ func _on_room_body_entered(room_name: String, body: Node) -> void:
 	if body.is_in_group("player"):
 		_enter_room(room_name)
 
+# Authoritative, geometry-based room tracking. The Area2D body_entered signal above
+# can be missed at room seams (tiny gaps, corner entries, fast movement), which left
+# the camera limits pinned to the previous room so it looked like the camera stopped
+# following. This resolves the current room from the player's real position every
+# physics frame, with sticky hysteresis: we only switch once the player has actually
+# left the current room's rect, so straddling a shared edge never flickers.
+func _physics_process(_delta: float) -> void:
+	if _player == null:
+		return
+	var p := _player.global_position
+	if _current_room != "" and _rooms.has(_current_room):
+		var cur: Rect2 = _rooms[_current_room]
+		if cur.has_point(p):
+			return
+	for room_name in _rooms:
+		var rr: Rect2 = _rooms[room_name]
+		if rr.has_point(p) and room_name != _current_room:
+			_enter_room(room_name)
+			return
+
 func _enter_room(room_name: String) -> void:
 	if room_name == _current_room or not _rooms.has(room_name):
 		return
@@ -354,3 +374,12 @@ func label(pos: Vector2, text: String, size := 13) -> void:
 
 func map_rooms() -> Dictionary:
 	return _rooms
+
+func map_visited() -> Dictionary:
+	return _visited
+
+func map_current() -> String:
+	return _current_room
+
+func map_player_pos() -> Vector2:
+	return _player.global_position if _player != null else Vector2.ZERO
