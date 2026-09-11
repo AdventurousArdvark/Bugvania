@@ -1,8 +1,10 @@
 extends CharacterBody2D
 ## PLAYER MOVEMENT CONTROLLER  (refined)
 ##
-## Feel target  -> F.I.S.T.: Forged In Shadow Torch  (weighty but responsive,
-##   momentum carries through dashes/jumps).
+## Feel target  -> SUPER SMASH BROS. ULTIMATE / MARIO  (snappy, strong air
+##   control, one clean feel — grafts are ABILITIES and no longer reshape your
+##   weight). Crisp ground traction, a real short-hop vs full-hop split, a
+##   confident double jump, and a quick tap-down fast fall.
 ## System target -> Super Metroid / Metroid Dread  (open, sequence-break-friendly).
 ##
 ## ARCHITECTURE (keep these two rules):
@@ -20,29 +22,32 @@ extends CharacterBody2D
 ##
 ## TUNING:
 ##   Quick-change feel  -> raise RUN_ACCEL and TURN_BOOST.
-##   Heavier (F.I.S.T.) -> lower them and lower AIR_ACCEL.
+##   Floatier / heavier -> lower FALL_GRAVITY (floatier apex) / raise it (heavier).
+##   Air control        -> AIR_ACCEL is the Mario signature; higher = tighter steering.
 ##   Shaft climb        -> WALL_JUMP_CONTROL_LOCK (longer = kick carries farther)
 ##                         and WALL_JUMP_PUSH together cross the gap. A narrower
 ##                         shaft also helps.
 ##   Speed tech         -> the >>> MOMENTUM lines must never hard-zero velocity.
 
 # --- Run ---
-@export var max_run_speed := 240.0
-@export var air_max_speed := 200.0      # SMASH: lower active air speed -> you drift, not dart
-@export var run_accel := 2600.0        # snappy ramp; lower for more weight
-@export var ground_friction := 1800.0  # moderate: you still slide a little on release
-@export var air_accel := 1500.0         # SMASH: gentle air steering
-@export var air_friction := 360.0       # SMASH: low drag -> momentum carries through the air
-@export var turn_boost := 2.4          # accel multiplier when reversing direction
+@export var max_run_speed := 250.0
+@export var air_max_speed := 220.0      # MARIO: good air speed, not a dart
+@export var run_accel := 2800.0        # snappy ground ramp
+@export var ground_friction := 2200.0  # MARIO: crisp traction, only a hair of slide
+@export var air_accel := 2100.0         # MARIO SIGNATURE: strong, tight air steering
+@export var air_friction := 320.0       # low drag -> momentum carries through the air
+@export var turn_boost := 2.6          # accel multiplier when reversing direction (instant pivot)
 
 # --- Jump ---
-@export var jump_velocity := -430.0
-@export var short_hop_velocity := -270.0   # SMASH: tap = short hop, hold = full hop
+@export var jump_velocity := -450.0
+@export var double_jump_velocity := -420.0  # MARIO: midair jump, a touch weaker than the first
+@export var high_jump_velocity := -560.0    # Kick-Tendon ground leap (only when has_high_jump)
+@export var short_hop_velocity := -260.0   # MARIO: tap = short hop, hold = full hop
 @export var jump_cut_multiplier := 0.45
-@export var gravity := 1300.0
-@export var fall_gravity := 1700.0     # heavier going down = weighty arc
+@export var gravity := 1350.0
+@export var fall_gravity := 1600.0     # slightly heavier down = clean weighty arc (lower = floatier)
 @export var max_fall_speed := 720.0
-@export var fast_fall_speed := 1080.0  # SMASH: tap down while falling to drop fast
+@export var fast_fall_speed := 1080.0  # MARIO: tap down while falling to drop fast
 @export var coyote_time := 0.10
 @export var jump_buffer_time := 0.10
 
@@ -70,6 +75,7 @@ extends CharacterBody2D
 @export var has_wall_jump := true
 @export var has_dash := true
 @export var has_double_jump := false
+@export var has_high_jump := false          # Kick-Tendon: a stronger ground leap (gates tall ledges)
 @export var has_slide := true
 
 # --- Beam flags (the base beam is always available; these are upgrades) ---
@@ -123,10 +129,6 @@ var _fast_falling := false
 # which owned parts fill your limited slots; equipped MASS reshapes your physics.
 @export var graft_capacity: int = 4
 var _owned: Dictionary = {}
-var _grav_mult: float = 1.0
-var _fallcap_mult: float = 1.0
-var _airspeed_mult: float = 1.0
-var _knock_mult: float = 1.0
 var _is_sliding := false
 var _slide_shrunk := false
 var _slide_orig_h: float = 0.0
@@ -329,14 +331,11 @@ func restore_grafts(owned: Array, capacity: int) -> void:
 	graft_capacity = maxi(1, capacity)
 	_recompute_grafts()
 
-# Equipped MASS reshapes the bug: heavier = falls faster, drifts less, shrugs off
-# knockback; lighter (wings) = floatier and easily launched.
+# Grafts are pure abilities now (flags + beam mods). They no longer reshape the
+# body's weight, so movement feel stays constant no matter what you wear. Kept as a
+# hook (still called on equip/unequip/restore) for any future non-physics graft logic.
 func _recompute_grafts() -> void:
-	var w := float(total_mass())
-	_grav_mult = clampf(1.0 + w * 0.045, 0.78, 1.5)
-	_fallcap_mult = clampf(1.0 + w * 0.05, 0.78, 1.6)
-	_airspeed_mult = clampf(1.0 - w * 0.022, 0.78, 1.18)
-	_knock_mult = clampf(1.0 - w * 0.05, 0.5, 1.35)
+	pass
 
 
 func _update_timers(delta: float) -> void:
@@ -384,8 +383,8 @@ func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
 		_fast_falling = false
 		return
-	var g := (fall_gravity if velocity.y > 0.0 else gravity) * _grav_mult
-	var cap := (fast_fall_speed if _fast_falling else max_fall_speed) * _fallcap_mult
+	var g := fall_gravity if velocity.y > 0.0 else gravity
+	var cap := fast_fall_speed if _fast_falling else max_fall_speed
 	velocity.y = minf(velocity.y + g * delta, cap)
 
 
@@ -397,7 +396,7 @@ func _handle_horizontal(delta: float, input_x: float) -> void:
 	var on_floor := is_on_floor()
 	var accel := run_accel if on_floor else air_accel
 	var fric := ground_friction if on_floor else air_friction
-	var top := max_run_speed if on_floor else air_max_speed * _airspeed_mult   # SMASH + mass
+	var top := max_run_speed if on_floor else air_max_speed   # MARIO air speed cap
 	var allow_boost := true
 
 	# Super Metroid feel: for a short window after a wall jump, steering BACK toward
@@ -442,7 +441,7 @@ func _try_jump() -> void:
 
 	# Ground / coyote jump.
 	if is_on_floor() or _coyote > 0.0:
-		velocity.y = jump_velocity
+		velocity.y = high_jump_velocity if has_high_jump else jump_velocity
 		_jump_buffer = 0.0
 		_coyote = 0.0
 		Audio.play("jump")
@@ -465,7 +464,7 @@ func _try_jump() -> void:
 
 	# Double jump - flag-gated.
 	if has_double_jump and not _double_jump_used:
-		velocity.y = jump_velocity
+		velocity.y = double_jump_velocity
 		_double_jump_used = true
 		_fast_falling = false                     # SMASH: double jump resets the dive
 		_jump_buffer = 0.0
@@ -628,8 +627,8 @@ func take_damage(amount: int, from_pos = null) -> void:
 		var dir := signf((global_position - from_pos).x)
 		if dir == 0.0:
 			dir = -float(_facing)
-		velocity.x = dir * knockback_force * _knock_mult
-		velocity.y = -knockback_force * 0.5 * _knock_mult
+		velocity.x = dir * knockback_force
+		velocity.y = -knockback_force * 0.5
 	if health <= 0:
 		await _die()
 		return

@@ -68,6 +68,10 @@ func _ready() -> void:
 	_draw_node.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_draw_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_draw_node)
+	get_viewport().size_changed.connect(func():
+		_draw_node.set_anchors_preset(Control.PRESET_FULL_RECT)
+		if _open:
+			_draw_node.queue_redraw())
 
 func bind(player: Node) -> void:
 	_player = player

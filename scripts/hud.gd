@@ -45,6 +45,15 @@ func _ready() -> void:
 	_draw_node.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_draw_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_draw_node)
+	# Responsive: the HUD normally only repaints on health/missile signals, so a
+	# window resize would leave it stale. Repaint (and re-fit to full rect) whenever
+	# the viewport changes size. Fires even while the tree is paused.
+	get_viewport().size_changed.connect(_on_viewport_resized)
+
+func _on_viewport_resized() -> void:
+	if _draw_node != null:
+		_draw_node.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_draw_node.queue_redraw()
 
 func _process(_delta: float) -> void:
 	pass

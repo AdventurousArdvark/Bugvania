@@ -46,9 +46,13 @@ func _ready() -> void:
 	_boss_music.autoplay = false
 	add_child(_boss_music)
 	# Lay the world out, left-to-right + up, in one continuous space.
+	# Lay the world out, left-to-right + up, in one continuous space. Built regions
+	# connect to real neighbors; unbuilt regions are sealed FRONTIERS (each module drops
+	# a themed FrontierGate at its own edges) so the world is always whole — you never
+	# walk off a raw edge, you meet a named, sealed door with what lies beyond.
 	ModIntro.build(self)
 	ModHollow.build(self)
-	ModGlimmerwet.build(self)
+	ModOxide.build(self)
 	_spawn_player()
 
 # ===========================================================================
@@ -250,7 +254,7 @@ func _new_game_loadout() -> void:
 	if _player == null:
 		return
 	_player.set("has_slide", true)
-	for k in ["has_wall_jump", "has_dash", "has_double_jump",
+	for k in ["has_wall_jump", "has_dash", "has_double_jump", "has_high_jump",
 			"has_charge", "has_ice", "has_wave", "has_missiles"]:
 		_player.set(k, false)
 	_player.set("charge_active", false)
@@ -284,7 +288,7 @@ func save_progress() -> void:
 		return
 	var ab := {}
 	for k in ["has_charge", "has_ice", "has_wave", "has_missiles",
-			"has_double_jump", "has_dash", "has_wall_jump", "has_slide"]:
+			"has_double_jump", "has_high_jump", "has_dash", "has_wall_jump", "has_slide"]:
 		ab[k] = bool(_player.get(k))
 	var vis := []
 	for r in _visited:

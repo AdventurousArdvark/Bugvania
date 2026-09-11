@@ -73,6 +73,10 @@ func _ready() -> void:
 			"gap": rng.randf_range(8, 16),
 		})
 	_setup_audio()
+	# Responsive: keep the Control filling the window and repaint on any resize.
+	get_viewport().size_changed.connect(func():
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		queue_redraw())
 
 func _setup_audio() -> void:
 	var m := Music.new()

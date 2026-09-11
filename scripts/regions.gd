@@ -1,54 +1,55 @@
 extends RefCounted
 class_name Regions
-## The six-region spine, as data. Each region knows its name, its mood tint, the
-## apex you harvest there, and the graft that harvest grants. `on_clear` is the
-## Mega Man X hook: defeating this region's apex changes ANOTHER region (lights go
-## out, a flow freezes, a way opens) — wired up when those regions are built.
+## The six-region spine, as runtime data — the Atlas realized for the live game. Each
+## region knows its themed name, mood tint, guardian, and the Mega Man X `on_clear`
+## hook (clearing this region's guardian changes ANOTHER region). IDs are stable keys
+## the built modules tag rooms with; `atlas_id` links to Atlas.AREAS for the fuller
+## design record (upgrades, gates, sequence breaks). See atlas.gd for the whole map.
 ##
-## A region's rooms are tagged with its id; the level shows the intro banner and
-## sets the ambience tint from here, and the apex calls player.harvest(graft).
+## The level shows the intro banner and sets the ambience tint from here, and the
+## apex/guardian calls player.harvest(graft) where wired.
 
 const SPINE := [
 	{
-		"id": "hollow", "order": 1,
-		"name": "THE HOLLOW MOUTH", "sub": "the hive breathes",
-		"tint": Color(0.34, 0.30, 0.24, 0.12),
-		"apex": "THE BURROWER", "graft": "has_wall_jump",
-		"on_clear": {"region": "marrow", "effect": "tunnels_settle"},
+		"id": "hollow", "atlas_id": "hollow", "order": 1,
+		"name": "THE GREENSHELL HOLLOW", "sub": "you wake in the moss",
+		"tint": Color(0.22, 0.34, 0.20, 0.12),
+		"guardian": "", "apex": "", "graft": "has_coil",
+		"on_clear": {},
 	},
 	{
-		"id": "glimmerwet", "order": 2,
-		"name": "THE GLIMMERWET", "sub": "the lights are watching",
-		"tint": Color(0.16, 0.26, 0.42, 0.12),
-		"apex": "THE LANTERN-MOTHER", "graft": "has_double_jump",
-		"on_clear": {"region": "weeping", "effect": "the_dark_floods_in"},
+		"id": "oxide", "atlas_id": "oxide", "order": 2,
+		"name": "THE OXIDE WASTES", "sub": "the machines rotted here first",
+		"tint": Color(0.42, 0.28, 0.14, 0.12),
+		"guardian": "THE GANTRY-THING", "apex": "THE GANTRY-THING", "graft": "has_charge",
+		"on_clear": {"region": "spire", "effect": "the_spire_lifts"},
 	},
 	{
-		"id": "marrow", "order": 3,
-		"name": "THE MARROW RUN", "sub": "you are being digested",
-		"tint": Color(0.40, 0.22, 0.20, 0.12),
-		"apex": "THE TUNNEL-BORER", "graft": "has_dash",
-		"on_clear": {"region": "hollow", "effect": "a_shortcut_opens"},
+		"id": "marrow", "atlas_id": "marrow", "order": 3,
+		"name": "THE MOLTEN MARROW", "sub": "the planet's blood runs hot",
+		"tint": Color(0.44, 0.18, 0.15, 0.13),
+		"guardian": "THE SLAGJAW", "apex": "THE SLAGJAW", "graft": "has_screw",
+		"on_clear": {"region": "cistern", "effect": "the_cisterns_drain"},
 	},
 	{
-		"id": "weeping", "order": 4,
-		"name": "THE WEEPING GALLERY", "sub": "this is a nursery",
-		"tint": Color(0.20, 0.34, 0.30, 0.12),
-		"apex": "THE SESSILE CHOIR", "graft": "has_charge",
-		"on_clear": {"region": "cold", "effect": "the_falls_thaw"},
+		"id": "spire", "atlas_id": "spire", "order": 4,
+		"name": "THE PALE SPIRE", "sub": "frozen mid-scream",
+		"tint": Color(0.24, 0.34, 0.48, 0.14),
+		"guardian": "THE RIME WARDEN", "apex": "THE RIME WARDEN", "graft": "has_space_jump",
+		"on_clear": {"region": "marrow", "effect": "the_marrow_cools_a_path"},
 	},
 	{
-		"id": "cold", "order": 5,
-		"name": "THE COLD CHOIR", "sub": "preserved, mid-scream",
-		"tint": Color(0.30, 0.40, 0.50, 0.14),
-		"apex": "THE PALE PREDATOR", "graft": "has_ice",
-		"on_clear": {"region": "glimmerwet", "effect": "the_brood_goes_quiet"},
+		"id": "cistern", "atlas_id": "cistern", "order": 5,
+		"name": "THE DROWNED CISTERNS", "sub": "something still breathes down here",
+		"tint": Color(0.16, 0.34, 0.34, 0.13),
+		"guardian": "THE TIDEMAW", "apex": "THE TIDEMAW", "graft": "has_gravity",
+		"on_clear": {"region": "core", "effect": "the_core_unseals"},
 	},
 	{
-		"id": "brood", "order": 6,
-		"name": "THE BROOD HEART", "sub": "the center of everything",
-		"tint": Color(0.50, 0.12, 0.12, 0.14),
-		"apex": "THE BROODMOTHER", "graft": "",          # finale — no graft, the escape
+		"id": "core", "atlas_id": "core", "order": 6,
+		"name": "THE HOLLOW CORE", "sub": "the center of the wound",
+		"tint": Color(0.34, 0.18, 0.42, 0.14),
+		"guardian": "THE NADIR", "apex": "THE NADIR", "graft": "",   # finale — the ending
 		"on_clear": {},
 	},
 ]
@@ -71,3 +72,6 @@ static func sub_of(id: String) -> String:
 
 static func graft_of(id: String) -> String:
 	return str(by_id(id).get("graft", ""))
+
+static func guardian_of(id: String) -> String:
+	return str(by_id(id).get("guardian", ""))
